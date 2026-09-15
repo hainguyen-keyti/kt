@@ -1,0 +1,16 @@
+{
+  "name": "kt",
+  "description": "Working discipline for Claude Code: load and save session context, plan then go inside a blast-radius fence, batched questions, second opinions, gate proofs, lessons, handoff reports, parallel lanes, cost measurement, and setup for new or existing repos.",
+  "version": "1.0.2",
+  "author": {
+    "name": "Keyti"
+  },
+  "homepage": "https://github.com/hainguyen-keyti/kt",
+  "repository": "https://github.com/hainguyen-keyti/kt",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "agent-discipline",
+    "workflow"
+  ]
+}

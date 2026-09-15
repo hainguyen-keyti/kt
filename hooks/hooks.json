@@ -1,0 +1,44 @@
+{
+  "description": "kt house hooks: working rules injected at SessionStart and SubagentStart, plus a second SubagentStart hook for the open decisions and stage of the cwd repo (each hook output stays under the 10000-char limit Claude Code puts on one hook); no em dash on Write/Edit/NotebookEdit and on Bash commit commands; no secret reads on Read/Grep; plan fence on Write/Edit/NotebookEdit plus a coarse shell fence on Bash while a plan is active. Auto-registered when the plugin is enabled; a machine that also wires them in settings.json runs each twice.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          { "type": "command", "command": "sh", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh"] }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "sh", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh"] },
+          { "type": "command", "command": "sh", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh", "docs"] }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/no-emdash.py"] },
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/no-offplan-edit.py"] }
+        ]
+      },
+      {
+        "matcher": "Read|Grep",
+        "hooks": [
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/no-secret-read.py"] }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/no-offplan-bash.py"] },
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/no-emdash.py"] }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "kt",
+  "description": "kt marketplace: the kt plugin, working discipline for Claude Code.",
+  "owner": {
+    "name": "Keyti"
+  },
+  "plugins": [
+    {
+      "name": "kt",
+      "source": "./",
+      "description": "Working discipline for Claude Code: session context, plans with a blast-radius fence, second opinions, gate proofs, lessons, handoff reports, parallel lanes, and setup for new or existing repos."
+    }
+  ]
+}
