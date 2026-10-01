@@ -92,6 +92,35 @@ Read this before installing; these apply to every session on the machine.
 - **Precedence**: the repo's `CLAUDE.md` beats `~/CLAUDE.md`, which beats the plugin rules, so you
   can override a rule for one repo or for your whole machine.
 
+## What kt does not guard
+
+kt has no hook for destructive shell commands, and `no-secret-read.py` covers only the Read and
+Grep tools, not a `cat` in the shell. The working rules tell the agent to stop before one-way
+actions, which is a promise, not a block. Use Claude Code's own permission rules for that layer: a
+`permissions.deny` list in `~/.claude/settings.json` is enforced by the client whatever the agent
+decides. A starting point:
+
+```json
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(rm -r *)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git push --force*)",
+      "Read(**/.env)",
+      "Read(~/.ssh/**)"
+    ]
+  }
+}
+```
+
+A `Read` deny rule also applies to `cat`, `head`, `tail` and redirections in the shell, but not to
+a script that opens the file itself. A Bash rule matches the command text, so the same program
+called another way (`/bin/rm`, `sh -c '...'`) gets past it: these rules are a net, not a boundary.
+For enforcement that does not depend on the command text, use Claude Code's sandbox.
+
 ## Update and uninstall
 
 ```bash
@@ -174,12 +203,17 @@ to Read the saved file in full, and `/kt:load` does the same.
   scratch.
 - `hooks/no-offplan-edit.py`: the plan fence on Write, Edit and NotebookEdit, armed by `/kt:plan`
   and removed by `/kt:save` at acceptance. The radius grammar and the `--audit` mode are documented
-  in its docstring. It fails closed while a plan is active, even when it crashes.
+  in its docstring. A broken marker or plan file fails closed, and so does a crash inside the hook.
 - `hooks/no-offplan-bash.py`: two shell guards while a plan is active: no write-shaped command that
   names the marker `.claude/active-plan` (except `rm`, the sanctioned exit) or the active plan's
   folder. Other shell writes outside the radius are not blocked on the spot; they surface in the
   audit that runs before every commit.
 - `hooks/no-secret-read.py`: blocks Read and Grep on secret files; the name list is in its source.
+- When a hook itself fails: `no-offplan-edit.py` fails closed (a crash blocks the write, with or
+  without an active plan), and `no-offplan-bash.py` fails closed only while a plan is active.
+  `no-emdash.py` and `no-secret-read.py` fail open: an internal error lets the call through, and
+  Claude Code shows a hook error notice instead of blocking. All four let the call through when
+  their JSON input is unreadable, and a hook that cannot start blocks nothing.
 - `agents/design-review`: reviews the UI of a running app in a real browser, desktop and mobile
   screenshots, concrete findings with severity, no scores, no edits (the agent cannot use Write,
   Edit or NotebookEdit). Inspired by the OneRedOak pattern.
@@ -189,8 +223,6 @@ to Read the saved file in full, and `/kt:load` does the same.
 - Code review: use `/code-review`; kt does not wrap built-ins.
 - Parallel work: `/kt:lane` (worktrees that carry the agent layer). One writer per checkout, and
   one client per session.
-- Machine-enforced TDD for money code: the companion plugin `nizos/tdd-guard`; read its source
-  first.
 - Cost model for choosing an approach (relative to plain input = 1): cache read 0.1, cache write 2
   (1-hour TTL), output 5. Every tool turn rereads the whole context, so the NUMBER OF TURNS and the
   SIZE OF THE CONTEXT drive cost more than the length of an answer. Prefer a script that prints a
