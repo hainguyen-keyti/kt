@@ -53,13 +53,20 @@ approves.
   absolute dates.
 - Hooks: create `.claude/hooks/session-start.sh`, `.claude/hooks/stop-gate.py` and the hooks
   section of `.claude/settings.json` exactly verbatim from the skeleton in `new.md` (heed the
-  technical notes that come with the skeleton, including the `kt-skeleton <version>` line: keep
-  the number of the installed version), `chmod +x` the sh script; if settings.json already
-  exists, MERGE, do not overwrite existing keys; if the repo has a Stop prompt-hook from the old
-  standard set, replace it with a command-hook. UPGRADING the skeleton of an adopted repo
-  (/kt:load calls for it when the `kt-skeleton` stamp differs from the installed version or is
-  missing): rerun only this step, copy the two scripts and the hooks section again, do not touch
-  docs/agent.
+  technical notes that come with the skeleton, including the `kt-skeleton <version>` line: copy
+  it as it stands in new.md), `chmod +x` the sh script; if settings.json already exists, MERGE,
+  do not overwrite existing keys; if the repo has a Stop prompt-hook from the old standard set,
+  replace it with a command-hook. UPGRADING the skeleton of an adopted repo (/kt:load calls for
+  it): rerun only this step and do not touch docs/agent. FIRST compare by machine: save the
+  script under `## Skeleton compare script` below to a temporary file and run
+  `python3 <that file> <installPath>/commands/new.md <repo root>`; it only reads. A part that is
+  SAME needs nothing. A part that DIFFERS or is MISSING: show the user its diff and ask, part by
+  part, keep (leave the repo's version), merge (carry kt's change into the repo's version) or
+  overwrite (copy from new.md); never overwrite a local change unasked. Then set the stamp line to
+  the one in new.md so /kt:load stops asking. Kt hook entries that already live in
+  `.claude/settings.local.json` are updated there, never added a second time to
+  `.claude/settings.json` (the hook would run twice); likewise a hooks part that DIFFERS is fixed
+  in the group that already runs the kt command, never by adding a second group.
 - Existing `CLAUDE.md`: keep the good content; a GENERAL RULES BLOCK copied from kt (smallest
   scope, follow the plan, no guessing, tests are inviolable, run it for real...) must be REMOVED
   and replaced with one sentence pointing to the `=== kt rules ===` block, because a repo's
@@ -98,3 +105,86 @@ approves.
   section reads `none`; the full format and rules live in that command). Invite the user to run
   `/kt:load` for acceptance: it must read the new set and retell the project correctly. If
   another agent assigned this work, send the REPORT block back to them with SendMessage.
+
+## Skeleton compare script
+
+Reads `new.md` and the repo, writes nothing. Lines carrying `kt-skeleton` are left out of the
+comparison, so a stamp written by an older kt still counts as the same skeleton. Exit 0 when every
+part is the same, 1 when any part differs or is missing.
+
+```
+import difflib, json, os, sys
+
+if len(sys.argv) != 3:
+    sys.exit("usage: python3 skeleton_compare.py <installPath>/commands/new.md <repo root>")
+new_md, repo = sys.argv[1], sys.argv[2]
+md = open(new_md, encoding="utf-8").read().split("\n")
+
+
+def block(head):
+    i = next(n for n, line in enumerate(md) if line.startswith(head))
+    start = next(n for n in range(i + 1, len(md)) if md[n].startswith("```")) + 1
+    end = next(n for n in range(start, len(md)) if md[n].startswith("```"))
+    return md[start:end]
+
+
+def body(lines):
+    return [line for line in lines if "kt-skeleton" not in line]
+
+
+report, bad = [], 0
+for name in ("session-start.sh", "stop-gate.py"):
+    want = body(block("### File `.claude/hooks/" + name + "`"))
+    path = os.path.join(repo, ".claude", "hooks", name)
+    if not os.path.isfile(path):
+        bad += 1
+        report.append(name + ": MISSING")
+        continue
+    have = body(open(path, encoding="utf-8", errors="replace").read().rstrip("\n").split("\n"))
+    diff = list(difflib.unified_diff(want, have, "kt/" + name, "repo/" + name, lineterm=""))
+    if not diff:
+        report.append(name + ": SAME")
+        continue
+    bad += 1
+    report.append(name + ": DIFFERS (" + str(sum(1 for line in diff[2:] if line[:1] in "+-")) + " changed lines)")
+    report += ["  " + line for line in diff]
+found = {}
+for fname in ("settings.json", "settings.local.json"):
+    path = os.path.join(repo, ".claude", fname)
+    if not os.path.isfile(path):
+        continue
+    try:
+        hooks = json.load(open(path, encoding="utf-8")).get("hooks", {})
+    except ValueError:
+        bad += 1
+        report.append(fname + ": UNREADABLE JSON")
+        continue
+    for event, groups in hooks.items():
+        for group in groups:
+            found.setdefault(event, []).append((fname, group))
+
+
+def commands(group):
+    return {h.get("command") for h in group.get("hooks", []) if isinstance(h, dict)}
+
+
+for event, groups in json.loads("\n".join(block("### File `.claude/settings.json`")))["hooks"].items():
+    for group in groups:
+        hits = [(fname, g) for fname, g in found.get(event, []) if isinstance(g, dict) and commands(group) & commands(g)]
+        exact = [fname for fname, g in hits if g == group]
+        if exact:
+            report.append("hooks." + event + ": kt entry present in " + exact[0])
+        elif hits:
+            bad += 1
+            fname, g = hits[0]
+            report.append("hooks." + event + ": DIFFERS in " + fname + " (the kt command is there, its group is not kt's)")
+            want = json.dumps(group, indent=2, sort_keys=True).split("\n")
+            have = json.dumps(g, indent=2, sort_keys=True).split("\n")
+            report += ["  " + line for line in difflib.unified_diff(want, have, "kt/" + event, fname + "/" + event, lineterm="")]
+        else:
+            bad += 1
+            report.append("hooks." + event + ": MISSING (no hook runs the kt command in settings.json or settings.local.json)")
+print("\n".join(report))
+print("RESULT: " + ("SAME" if not bad else "DIFFERS (" + str(bad) + " parts)"))
+sys.exit(1 if bad else 0)
+```

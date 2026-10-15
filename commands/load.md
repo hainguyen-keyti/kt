@@ -14,9 +14,13 @@ Reload the project context in exactly this order, skipping no step:
    to; then `git log --oneline -15` and `git status`. Then the step named
    "Reconcile the ledger with the machine", never skipped: the sha and date on the HANDOFF
    "Last updated" line against `git log -1 --format='%h %ci'`; the HANDOFF mtime (`stat`) against
-   that commit's date; the `kt-skeleton <version>` stamp in the bootstrap block against the
-   version of the installed kt (`installed_plugins.json`; no stamp means an old
-   skeleton; on a mismatch rerun the Hooks step of `/kt:adopt`); any ledger entry that has a real
+   that commit's date; the `kt-skeleton <version>` stamp in the bootstrap block against the stamp
+   in `commands/new.md` of the installed kt (its `installPath` in `installed_plugins.json`): the
+   skeleton is current when the repo's stamp is not older than that one (compare the numbers part
+   by part), both `.claude/hooks/session-start.sh` and `.claude/hooks/stop-gate.py` exist, and
+   `.claude/settings.json` or `.claude/settings.local.json` has a SessionStart command hook running
+   session-start.sh and a Stop command hook running stop-gate.py; no stamp, an older stamp or a
+   missing piece means rerun the Hooks step of `/kt:adopt`; any ledger entry that has a real
    source in the repo (defects, run meta, lockfile) against that source. Call out any mismatch at
    the very top of the presentation.
 2. If the repo has NO `docs/agent/`: read CLAUDE.md, README, the most recent handoff or plan file

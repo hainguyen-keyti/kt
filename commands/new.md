@@ -122,7 +122,7 @@ cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ -d docs/agent ] || exit 0
 mkdir -p .claude && touch .claude/session-start
 echo "=== docs/agent bootstrap (injected by the SessionStart hook) ==="
-echo "kt-skeleton 1.1.0 (version of the kt plugin that wrote these hooks; /kt:load compares it with the installed plugin)"
+echo "kt-skeleton 1.0.0 (the kt version whose skeleton these hooks match; /kt:load compares it with the stamp in the installed kt)"
 echo "If this block reached you as a <persisted-output> preview, Read the saved file named in it in full before restating anything: the preview is not the files."
 echo "Before doing anything else: restate to the user, in one short paragraph, the project stage and its consequences, the current state, the open decisions, and the next step, based on the files below. Respect the stage consequences absolutely. Items under '4. Open decisions' in DECISIONS.md must not be re-decided or re-proposed. Do not start coding until the user confirms."
 for f in docs/agent/PROJECT.md docs/agent/HANDOFF.md docs/agent/DECISIONS.md docs/agent/LESSONS.md docs/agent/ACCESS.md; do
@@ -279,9 +279,9 @@ a self-report; the machine checks mtime and the audit instead.
    content of the docs/agent files and create the `.claude/session-start` stamp; with
    `CLAUDE_PROJECT_DIR=/tmp` it must stay silent and exit 0. Stop gate: `echo '{}' | CLAUDE_PROJECT_DIR=$(pwd)
    python3 .claude/hooks/stop-gate.py` must exit 0 (no REPORT and no commit in the session means it
-   does not bite). The `kt-skeleton <version>` line in session-start.sh keeps the version of the kt
-   plugin installed at setup time: it is the stamp that lets /kt:load tell a repo runs an old
-   skeleton.
+   does not bite). The `kt-skeleton <version>` line in session-start.sh names the kt version in
+   which this skeleton last changed (it moves only when the skeleton does): it is the stamp that
+   lets /kt:load tell a repo runs an old skeleton.
 2. Parse `.claude/settings.json` (for example `python3 -c "import json; json.load(open('.claude/settings.json'))"`).
 3. THE AGENT LAYER IS MACHINE-LOCAL AND NEVER COMMITTED: write these four lines into
    `.git/info/exclude` (NOT `.gitignore`, so nothing is pushed anywhere or visible in the repo):

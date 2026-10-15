@@ -131,8 +131,10 @@ claude plugin marketplace update kt
 claude plugin update kt@kt
 ```
 
-Restart Claude Code after updating. When `/kt:load` reports that a repo's `kt-skeleton` stamp
-differs from the installed version, rerun the Hooks step of `/kt:adopt` in that repo.
+Restart Claude Code after updating. When `/kt:load` reports that a repo's `kt-skeleton` stamp is
+older than the one in the installed kt, or that a skeleton hook is missing, rerun the Hooks step of
+`/kt:adopt` in that repo: it compares the repo's hooks with kt's byte for byte and asks before
+overwriting a local change.
 
 To switch kt off without removing it, run `claude plugin disable kt@kt` (and
 `claude plugin enable kt@kt` to turn it back on). To remove it:
@@ -262,8 +264,9 @@ to Read the saved file in full, and `/kt:load` does the same.
 - Gate before every commit: `python3 hooks/test_hooks.py`. It includes `claude plugin validate .
   --strict`, an em dash sweep and an English-only sweep over tracked files, and a check that the
   installed plugin matches the working tree (skipped when kt is not installed).
-- Release: bump `version` in `.claude-plugin/plugin.json` together with the `kt-skeleton <version>`
-  stamp in `commands/new.md` (a test pins both), commit, push, then
+- Release: bump `version` in `.claude-plugin/plugin.json`; set the `kt-skeleton <version>` stamp in
+  `commands/new.md` to the new version only when the skeleton blocks change (a test pins the stamp
+  to the skeleton content), commit, push, then
   `claude plugin marketplace update kt` and `claude plugin update kt@kt`, restart, and prove any new
   hook behavior with `/kt:prove`. Without a version bump, update keeps the cached copy.
 - Register the marketplace by its git URL, not by a local checkout path: a directory marketplace

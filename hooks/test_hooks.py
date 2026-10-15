@@ -7,6 +7,7 @@ the exit code (0 = allow, 2 = block). New expectations must be seen RED before t
 lands (governance rule 4, standing form). Dash characters are built via chr() so the
 no-emdash hook can write this file. Totals are derived from the checks actually run.
 """
+import hashlib
 import json
 import os
 import re
@@ -793,16 +794,39 @@ def docs_block_review_cases(s):
     s.check("session-rules.sh docs hook survives a non-UTF-8 byte in the ledger instead of dropping the block", "BYTE-MARK" in docs and "=== docs/agent" in docs, repr(docs[:120]))
 
 
+SKELETON_HEADS = [
+    "### File `.claude/hooks/session-start.sh` (chmod +x after creating it)",
+    "### File `.claude/hooks/stop-gate.py`",
+    "### File `.claude/settings.json` (if it already exists, MERGE, never overwrite existing keys)",
+]
+# Stamp = the kt version in which these blocks last changed; when a block changes, update both together.
+SKELETON_PIN = ("1.0.0", "f299fce933003c81a1d824afdc146acfaf6175d38a2549a9c388bf9602fcd89e")
+
+
+def skeleton_digest(md_text):
+    parts = ["\n".join(l for l in extract_block(md_text, h).splitlines() if "kt-skeleton" not in l) for h in SKELETON_HEADS]
+    return hashlib.sha256("\n\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def version_tuple(v):
+    return tuple(int(x) for x in v.split("."))
+
+
 def skeleton_stamp_cases(s):
-    """The skeleton carries the plugin version that wrote it, so /kt:load can say when a repo runs an old one."""
+    """The stamp names the kt version in which the skeleton last changed, so /kt:load asks for an upgrade
+    only when the skeleton really moved; the stamp and the skeleton content are pinned together."""
     text = open(os.path.join(ROOT, "commands", "new.md"), encoding="utf-8").read()
     ver = json.load(open(os.path.join(ROOT, ".claude-plugin", "plugin.json"), encoding="utf-8"))["version"]
     try:
-        code = extract_block(text, "### File `.claude/hooks/session-start.sh` (chmod +x after creating it)")
+        code = extract_block(text, SKELETON_HEADS[0])
+        digest = skeleton_digest(text)
     except StopIteration:
-        s.check("new.md embeds .claude/hooks/session-start.sh", False, "heading or fenced block missing")
+        s.check("new.md embeds the three skeleton blocks", False, "heading or fenced block missing")
         return
-    s.check("new.md session-start.sh stamps the skeleton with the current plugin version", ("kt-skeleton " + ver) in code, "expected 'kt-skeleton " + ver + "'")
+    found = re.search(r"kt-skeleton ([0-9][0-9.]*)", code)
+    stamp = found.group(1) if found else ""
+    s.check("skeleton stamp and skeleton content are pinned together (change both, deliberately)", (stamp, digest) == SKELETON_PIN, "stamp " + stamp + ", digest " + digest)
+    s.check("skeleton stamp is not newer than the plugin version", bool(stamp) and version_tuple(stamp) <= version_tuple(ver), stamp + " vs " + ver)
     with tempfile.TemporaryDirectory() as tmp:
         script = os.path.join(tmp, "session-start.sh")
         open(script, "w", encoding="utf-8").write(code)
@@ -810,10 +834,70 @@ def skeleton_stamp_cases(s):
         os.makedirs(os.path.join(proj, "docs", "agent"))
         open(os.path.join(proj, "docs/agent/PROJECT.md"), "w", encoding="utf-8").write("# P\nSTAGE-MARK\n")
         proc = subprocess.run(["sh", script], capture_output=True, text=True, env={**os.environ, "CLAUDE_PROJECT_DIR": proj})
-        s.check("skeleton session-start.sh prints the stamp next to the bootstrap", proc.returncode == 0 and ("kt-skeleton " + ver) in proc.stdout and "STAGE-MARK" in proc.stdout, proc.stdout[:160])
+        s.check("skeleton session-start.sh prints the stamp next to the bootstrap", proc.returncode == 0 and ("kt-skeleton " + stamp) in proc.stdout and "STAGE-MARK" in proc.stdout, proc.stdout[:160])
         open(os.path.join(proj, "docs/agent/PROJECT.md"), "w", encoding="utf-8").write("# P\nSTAGE-MARK\n" + "x" * 3000 + "\n")
         proc = subprocess.run(["sh", script], capture_output=True, text=True, env={**os.environ, "CLAUDE_PROJECT_DIR": proj})
         s.check("skeleton session-start.sh says, in its first 1000 chars, to Read the saved file when the bootstrap arrives as a persisted-output preview", "persisted-output" in proc.stdout[:1000] and len(proc.stdout) > 3000, proc.stdout[:200])
+
+
+def skeleton_compare_cases(s):
+    """The adopt upgrade compares a repo's skeleton with kt's byte for byte before copying anything, so a
+    local change is shown and asked about instead of silently overwritten; the stamp line is ignored."""
+    try:
+        code = extract_block(open(os.path.join(ROOT, "commands", "adopt.md"), encoding="utf-8").read(), "## Skeleton compare script")
+    except StopIteration:
+        s.check("adopt.md embeds the skeleton compare script under '## Skeleton compare script'", False, "heading or fenced block missing")
+        return
+    s.check("adopt.md embeds the skeleton compare script under '## Skeleton compare script'", True)
+    new_md = os.path.join(ROOT, "commands", "new.md")
+    md = open(new_md, encoding="utf-8").read()
+    ss, sg, st = ".claude/hooks/session-start.sh", ".claude/hooks/stop-gate.py", ".claude/settings.json"
+    full = {ss: extract_block(md, SKELETON_HEADS[0]), sg: extract_block(md, SKELETON_HEADS[1]), st: extract_block(md, SKELETON_HEADS[2])}
+    with tempfile.TemporaryDirectory() as tmp:
+        script = os.path.join(tmp, "skeleton_compare.py")
+        open(script, "w", encoding="utf-8").write(code)
+
+        def run(name, files):
+            root = os.path.join(tmp, name)
+            for rel, body in files.items():
+                os.makedirs(os.path.dirname(os.path.join(root, rel)), exist_ok=True)
+                open(os.path.join(root, rel), "w", encoding="utf-8").write(body)
+            before = {rel: open(os.path.join(root, rel), "rb").read() for rel in files}
+            proc = subprocess.run([sys.executable, script, new_md, root], capture_output=True, text=True)
+            after = {rel: open(os.path.join(root, rel), "rb").read() for rel in files}
+            return proc, before == after and sorted(os.listdir(os.path.join(root, ".claude"))) == sorted({r.split("/")[1] for r in files})
+
+        proc, untouched = run("same", full)
+        s.check("skeleton compare: an unchanged skeleton is SAME (exit 0)", proc.returncode == 0 and "RESULT: SAME" in proc.stdout, (proc.stdout + proc.stderr)[-300:])
+        s.check("skeleton compare: reading a repo writes nothing into it", untouched)
+        old = dict(full)
+        old[ss] = "\n".join('echo "kt-skeleton 1.0.0 (older wording)"' if "kt-skeleton" in l else l for l in full[ss].split("\n"))
+        proc, _ = run("stamp", old)
+        s.check("skeleton compare: a different stamp line alone is still SAME", proc.returncode == 0 and "RESULT: SAME" in proc.stdout, proc.stdout[-300:])
+        edited = dict(full)
+        edited[sg] = full[sg] + "# LOCAL-EDIT-MARK\n"
+        proc, untouched = run("edited", edited)
+        s.check("skeleton compare: a local edit to stop-gate.py is DIFFERS (exit 1) and the diff shows the edited line", proc.returncode == 1 and "stop-gate.py: DIFFERS" in proc.stdout and "+# LOCAL-EDIT-MARK" in proc.stdout, proc.stdout[-400:])
+        s.check("skeleton compare: a repo with a local edit is left untouched", untouched)
+        missing = dict(full)
+        del missing[sg]
+        proc, _ = run("missing", missing)
+        s.check("skeleton compare: a missing stop-gate.py is MISSING (exit 1)", proc.returncode == 1 and "stop-gate.py: MISSING" in proc.stdout, proc.stdout[-300:])
+        local = dict(full)
+        local[".claude/settings.local.json"] = full[st]
+        local[st] = '{"permissions": {}}\n'
+        proc, _ = run("local", local)
+        s.check("skeleton compare: kt hook entries kept in settings.local.json count, and the output names that file", proc.returncode == 0 and "settings.local.json" in proc.stdout, proc.stdout[-300:])
+        narrow = dict(full)
+        narrowed = json.loads(full[st])
+        narrowed["hooks"]["SessionStart"][0]["matcher"] = "startup|resume|clear"
+        narrow[st] = json.dumps(narrowed, indent=2)
+        proc, _ = run("narrow", narrow)
+        s.check("skeleton compare: a SessionStart group running the kt command with a narrower matcher is DIFFERS (exit 1), not MISSING", proc.returncode == 1 and "hooks.SessionStart: DIFFERS" in proc.stdout and "MISSING" not in proc.stdout, proc.stdout[-400:])
+        prompt = dict(full)
+        prompt[st] = json.dumps({"hooks": {"SessionStart": json.loads(full[st])["hooks"]["SessionStart"], "Stop": [{"hooks": [{"type": "prompt", "prompt": "You are a stop-gate evaluator"}]}]}})
+        proc, _ = run("prompt", prompt)
+        s.check("skeleton compare: a Stop prompt hook in place of the kt command hook is MISSING (exit 1)", proc.returncode == 1 and "Stop: MISSING" in proc.stdout, proc.stdout[-300:])
 
 
 def cost_cases(s):
@@ -874,6 +958,8 @@ TEXT_WIRING = [
     ("commands/load.md", "kt-skeleton"),
     ("commands/load.md", "persisted-output"),
     ("commands/load.md", "Active plan"),
+    ("commands/load.md", "is not older than"),
+    ("commands/adopt.md", "settings.local.json"),
     ("commands/go.md", "Active plan"),
     ("commands/save.md", "Parked questions"),
     ("commands/report.md", "clean tree"),
@@ -947,7 +1033,7 @@ def trailer_cases(s):
 
 def main():
     s = Suite()
-    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases):
+    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases):
         fn(s)
     for line in s.failures:
         print("FAIL " + line)
