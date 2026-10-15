@@ -191,7 +191,7 @@ to Read the saved file in full, and `/kt:load` does the same.
 
 ## Rules and hooks in detail
 
-- `rules/work.md` (under 100 lines, pinned by a test) is injected by `hooks/session-rules.sh` at
+- `rules/work.md` (at most 100 lines, pinned by a test) is injected by `hooks/session-rules.sh` at
   SessionStart (startup, resume, clear, compact, fork) and at SubagentStart. A second SubagentStart
   hook (`session-rules.sh docs`) injects the repo's "Open decisions" and "Current stage and
   consequences" sections. Each hook output stays within its own budget below the 10,000-character

@@ -1,6 +1,6 @@
 # kt working rules (injected by the plugin at SessionStart and into every subagent)
 Shared working rules for an AI coding agent (precedence on conflict is in the banner above); keep
-this file under 100 lines. As a SUBAGENT with a brief from the main session: follow the parent's
+this file at most 100 lines. As a SUBAGENT with a brief from the main session: follow the parent's
 brief; the session start and end rituals do not apply, put open questions in your result; the
 docs/agent (cwd) block injected alongside (if any) holds the repo's open decisions and stage: obey
 the stage; on touching an invariant, money, security or an open decision, STOP and return at once
@@ -53,6 +53,8 @@ with the question.
 - "Tests pass" is not "it works". Define the metric first, measure in the real environment, report
   NUMBERS (p50/p95, %, count), not adjectives. A failing test is reported as failed, with its
   output; a skipped step as skipped; never "done" without evidence from a real run.
+- A test proves only the path it crosses: each seam (IPC, API, UI to state) needs at least one
+  test THROUGH it that pins every field of the contract; reading the DOM is not seeing the screen.
 - Tests are sacrosanct: NO `.skip`, no loosened assertion, no editing a test to make it pass. A new
   test or gate (CI check, hook, invariant test) must be seen RED for the right reason before a
   green is trusted (/kt:prove); an expectation changes only for a deliberate change recorded in
@@ -62,9 +64,8 @@ with the question.
   must prove it measures (print total line counts, not head; tell untracked from clean; echo parsed
   arguments). In zsh: no exit code through a pipe (`PIPESTATUS` is empty); unquoted variables do
   not word-split (use functions, arrays); an unmatched glob fails the command (quote `*`, use find).
-- Quick gate while coding; the full gate ONCE before REPORT and before merge or push, EVIDENCE
-  quoting the count line + sha + clean tree; a receiver skips the rerun only if HEAD is that sha
-  and the tree is clean.
+- Quick gate while coding; full gate ONCE before REPORT, merge or push, EVIDENCE quoting the count
+  line + sha + clean tree; a receiver skips the rerun only if HEAD is that sha on a clean tree.
 - Runtime claims come from a REAL RUN (read the test output, look at the app); reading code means
   the IMPLEMENTATION, not names, comments or READMEs; for a dependency open its source and cite
   file:line; never use an identifier whose exact signature is unverified.
@@ -83,9 +84,8 @@ with the question.
 
 ## 6. Git
 - Small commits per finished step; commit a rollback point before handing an agent risky work.
-- Ending a session with code changes: gate green, HANDOFF updated, `git pull --rebase`, `git push`
-  until up to date; if the repo forbids auto-push, auto-deploy or auto-PR, obey that. Contracts
-  are always user-gated.
+- Session end with code changes: gate green, HANDOFF updated, `git pull --rebase`, `git push` until
+  up to date; obey a repo ban on auto-push, auto-deploy or auto-PR. Contracts are always user-gated.
 - NEVER sign the user's work: no `Co-Authored-By`, no tool advertising, in commits or PRs.
 
 ## 7. Where each kind of knowledge lives

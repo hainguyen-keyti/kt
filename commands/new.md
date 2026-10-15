@@ -122,7 +122,7 @@ cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ -d docs/agent ] || exit 0
 mkdir -p .claude && touch .claude/session-start
 echo "=== docs/agent bootstrap (injected by the SessionStart hook) ==="
-echo "kt-skeleton 1.0.2 (version of the kt plugin that wrote these hooks; /kt:load compares it with the installed plugin)"
+echo "kt-skeleton 1.1.0 (version of the kt plugin that wrote these hooks; /kt:load compares it with the installed plugin)"
 echo "If this block reached you as a <persisted-output> preview, Read the saved file named in it in full before restating anything: the preview is not the files."
 echo "Before doing anything else: restate to the user, in one short paragraph, the project stage and its consequences, the current state, the open decisions, and the next step, based on the files below. Respect the stage consequences absolutely. Items under '4. Open decisions' in DECISIONS.md must not be re-decided or re-proposed. Do not start coding until the user confirms."
 for f in docs/agent/PROJECT.md docs/agent/HANDOFF.md docs/agent/DECISIONS.md docs/agent/LESSONS.md docs/agent/ACCESS.md; do

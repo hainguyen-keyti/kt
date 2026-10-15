@@ -468,10 +468,17 @@ def packaging_cases(s):
                 s.check("hooks.json target exists: " + os.path.relpath(target, ROOT), os.path.isfile(target))
     claude = shutil.which("claude")
     if claude:
-        proc = subprocess.run([claude, "plugin", "validate", ROOT, "--strict"], capture_output=True, text=True)
-        s.check("plugin validate --strict", proc.returncode == 0, (proc.stdout + proc.stderr).strip().splitlines()[-1] if (proc.stdout + proc.stderr).strip() else "no output")
+        # Validate what ships: tracked files only, so a machine-local CLAUDE.md at the root is not judged.
+        with tempfile.TemporaryDirectory() as shipped:
+            for rel in subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.splitlines():
+                src = os.path.join(ROOT, rel)
+                if os.path.isfile(src):
+                    os.makedirs(os.path.dirname(os.path.join(shipped, rel)), exist_ok=True)
+                    shutil.copy2(src, os.path.join(shipped, rel))
+            proc = subprocess.run([claude, "plugin", "validate", shipped, "--strict"], capture_output=True, text=True)
+        s.check("plugin validate --strict on the tracked files", proc.returncode == 0, (proc.stdout + proc.stderr).strip().splitlines()[-1] if (proc.stdout + proc.stderr).strip() else "no output")
     else:
-        s.check("plugin validate --strict", False, "claude CLI not found on PATH")
+        s.check("plugin validate --strict on the tracked files", False, "claude CLI not found on PATH")
 
 
 def rules_cases(s):
@@ -481,7 +488,7 @@ def rules_cases(s):
         return
     text = open(rules, encoding="utf-8").read()
     s.check("rules/work.md passes no-emdash", run_hook("no-emdash.py", content(text)).returncode == 0)
-    s.check("rules/work.md under 100 lines", text.count("\n") <= 100, str(text.count("\n")))
+    s.check("rules/work.md at most 100 lines", text.count("\n") <= 100, str(text.count("\n")))
     s.check("rules/core.md does not exist (the rules live in rules/work.md only)", not os.path.exists(os.path.join(ROOT, "rules", "core.md")))
     script = os.path.join(HERE, "session-rules.sh")
     s.check("session-rules.sh exists", os.path.isfile(script))
