@@ -32,19 +32,17 @@ with the question.
   Write/Edit/NotebookEdit so the fence (the no-offplan hook) sees them, never through the shell.
 
 ## 3. State protocol: start and end of session
-- In a repo with `docs/agent/`: read `PROJECT.md` and `HANDOFF.md` BEFORE anything else and restate
-  them in 3-5 sentences for the user to confirm (`/kt:load` does the whole ritual). Obey the STAGE
-  and its CONSEQUENCES absolutely; DECISIONS.md and LESSONS.md follow the rule atop each file.
+- In a repo with `docs/agent/`: read `PROJECT.md` and `HANDOFF.md` FIRST and restate them in 3-5
+  sentences; wait for confirmation unless HANDOFF is fresh and the task is named (`/kt:load`).
+  Obey the STAGE and its CONSEQUENCES absolutely; DECISIONS.md, LESSONS.md: obey the rule atop each.
 - At session end, before /clear, or when the user stops: `/kt:save`.
-- Coordinated by another session: the brief stays valid if contact is lost (names change on
-  resume); each turn runs the whole assigned task chain; another repo's state comes from git and
-  settings, not from the ledger.
+- Coordinated by another session: the brief holds if contact is lost (names change on resume); each
+  turn runs the whole assigned task chain; another repo's state: git and settings, not the ledger.
 - NO assumptions, no guessing: ASK until a vague request or spec is clear, and only then start.
   Ambiguity found mid-task: if it BLOCKS the work, stop and ask at once with options; if not, write
-  it under "Parked questions" in docs/agent/HANDOFF.md (without the standard set, in the final
-  report), continue with what is clear, ask everything in one batch at session end. Never fill a
-  gap with judgment. Touching an invariant, money, security or an "Open decisions" item of
-  DECISIONS.md: you MUST stop and ask.
+  it under "Parked questions" in docs/agent/HANDOFF.md (no standard set: in the final report),
+  continue with what is clear, ask everything in one batch at session end. Touching an invariant,
+  money, security or an "Open decisions" item: you MUST stop and ask.
 - Asking the user: 2-4 options, (Recommended) FIRST with its reason; no yes/no chains, no question
   without a proposal. Options must be CORRECT and durable (root cause, per spec and architecture);
   token cost never lowers the bar; a patch only to put out a fire, labeled, with the proper fix.
@@ -56,16 +54,20 @@ with the question.
 - A test proves only the path it crosses: each seam (IPC, API, UI to state) needs at least one
   test THROUGH it that pins every field of the contract; reading the DOM is not seeing the screen.
 - Tests are sacrosanct: NO `.skip`, no loosened assertion, no editing a test to make it pass. A new
-  test or gate (CI check, hook, invariant test) must be seen RED for the right reason before a
-  green is trusted (/kt:prove); an expectation changes only for a deliberate change recorded in
-  DECISIONS, stated in the commit.
+  test or gate must be seen RED for the right reason before a green is trusted (/kt:prove); an
+  expectation changes only for a deliberate change recorded in DECISIONS and the commit.
 - Every bug: answer "why did it happen" before fixing, then pin that path with a regression test.
 - Doubt the ruler before the thing measured, EVEN when the result looks normal: a measuring command
   must prove it measures (print total line counts, not head; tell untracked from clean; echo parsed
   arguments). In zsh: no exit code through a pipe (`PIPESTATUS` is empty); unquoted variables do
   not word-split (use functions, arrays); an unmatched glob fails the command (quote `*`, use find).
-- Quick gate while coding; full gate ONCE before REPORT, merge or push, EVIDENCE quoting the count
-  line + sha + clean tree; a receiver skips the rerun only if HEAD is that sha on a clean tree.
+- Quick gate while coding; full gate ONCE before REPORT, merge or push. Evidence counts ONCE:
+  one recorded red run is the red for TDD, /kt:prove and any revert check; one full-gate EVIDENCE
+  line (`<cmd>: <count line> @ <sha>, clean tree`) serves every later layer (save, report,
+  receivers, reviewers): rerun only when HEAD is not that sha on a clean tree.
+- Run once, read many: `cmd > /tmp/x.log 2>&1; echo EXIT=$?; tail -n 60 /tmp/x.log`, then read
+  the log; never re-execute a run to see its output again. Stop and report (tries, last 30 lines,
+  hypothesis) after 2 failed fix attempts on the same check.
 - Runtime claims come from a REAL RUN (read the test output, look at the app); reading code means
   the IMPLEMENTATION, not names, comments or READMEs; for a dependency open its source and cite
   file:line; never use an identifier whose exact signature is unverified.
@@ -76,9 +78,8 @@ with the question.
 - Secrets never go into chat, transcripts, commits or images; env files gitignored, runtime-only,
   no build arg or `NEXT_PUBLIC_*`; keys least-privilege; a key exposed in chat is burned: rotate.
 - The agent USES secrets but never SEES values: do not read secret files (names in
-  `hooks/no-secret-read.py`, a coarse net, not a boundary); use them only through `$VAR`, paths,
-  the repo's wrapper scripts; mask or skip a command that may print a value. Secret locations are
-  in `docs/agent/ACCESS.md`.
+  `hooks/no-secret-read.py`, a coarse net); use them only through `$VAR`, paths, the repo's wrapper
+  scripts; mask or skip a command that may print a value. Locations: `docs/agent/ACCESS.md`.
 - A stateful or money-holding system: write 3-5 invariants as runnable tests before coding. A
   machine-specific playbook, if any, is linked from the machine rule file `~/CLAUDE.md`.
 
@@ -94,7 +95,6 @@ with the question.
 - Project state (stage, decisions, progress) lives in the repo's `docs/agent/`, NOT in CLAUDE.md
   (it goes stale) nor in auto memory (machine-local, unversioned).
 - The AGENT LAYER (CLAUDE.md, `docs/agent/`, `.claude/`) is MACHINE-LOCAL: `.git/info/exclude`,
-  never committed or pushed (a repo already tracking it keeps it until the user decides to
-  untrack it); `/kt:save` backs it up.
+  never committed (a repo tracking it keeps it until the user untracks it); `/kt:save` backs it up.
 - A lesson just paid for goes right away into that repo's `docs/agent/LESSONS.md` (machine-wide
   lessons are promoted into kt: `rules/work.md` or a hook). An unwritten lesson is paid for twice.

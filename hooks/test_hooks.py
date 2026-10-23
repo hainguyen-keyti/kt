@@ -457,7 +457,8 @@ def packaging_cases(s):
     s.check("hooks.json SessionStart present", bool(start))
     if start:
         matcher = start[0]["matcher"]
-        s.check("hooks.json SessionStart matcher covers startup, resume, clear, compact, fork", all(k in matcher for k in ("startup", "resume", "clear", "compact", "fork")), matcher)
+        s.check("hooks.json SessionStart matcher covers startup, clear, compact, fork", all(k in matcher for k in ("startup", "clear", "compact", "fork")), matcher)
+        s.check("hooks.json SessionStart matcher leaves out resume (the resumed conversation already holds the rules)", "resume" not in matcher, matcher)
     sub = spec.get("SubagentStart", [])
     s.check("hooks.json SubagentStart injects the rules", bool(sub) and any("session-rules.sh" in h["args"][0] for m in sub for h in m["hooks"]))
     sub_args = [[a.replace("${CLAUDE_PLUGIN_ROOT}/hooks/", "") for a in h["args"]] for m in sub for h in m["hooks"]]
@@ -800,7 +801,7 @@ SKELETON_HEADS = [
     "### File `.claude/settings.json` (if it already exists, MERGE, never overwrite existing keys)",
 ]
 # Stamp = the kt version in which these blocks last changed; when a block changes, update both together.
-SKELETON_PIN = ("1.0.0", "f299fce933003c81a1d824afdc146acfaf6175d38a2549a9c388bf9602fcd89e")
+SKELETON_PIN = ("1.3.0", "ec772b12616d4e571ab018593812c47461a74e7578b00f850f30f2203f5b7767")
 
 
 def skeleton_digest(md_text):
@@ -831,13 +832,40 @@ def skeleton_stamp_cases(s):
         script = os.path.join(tmp, "session-start.sh")
         open(script, "w", encoding="utf-8").write(code)
         proj = os.path.join(tmp, "proj")
-        os.makedirs(os.path.join(proj, "docs", "agent"))
-        open(os.path.join(proj, "docs/agent/PROJECT.md"), "w", encoding="utf-8").write("# P\nSTAGE-MARK\n")
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, env={**os.environ, "CLAUDE_PROJECT_DIR": proj})
-        s.check("skeleton session-start.sh prints the stamp next to the bootstrap", proc.returncode == 0 and ("kt-skeleton " + stamp) in proc.stdout and "STAGE-MARK" in proc.stdout, proc.stdout[:160])
-        open(os.path.join(proj, "docs/agent/PROJECT.md"), "w", encoding="utf-8").write("# P\nSTAGE-MARK\n" + "x" * 3000 + "\n")
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, env={**os.environ, "CLAUDE_PROJECT_DIR": proj})
-        s.check("skeleton session-start.sh says, in its first 1000 chars, to Read the saved file when the bootstrap arrives as a persisted-output preview", "persisted-output" in proc.stdout[:1000] and len(proc.stdout) > 3000, proc.stdout[:200])
+        agent = os.path.join(proj, "docs", "agent")
+        os.makedirs(agent)
+        ledger = {
+            "PROJECT.md": "# P\n\n## What this is\nWHAT-MARK\n\n## Current stage and consequences\nSTAGE-MARK\n",
+            "DECISIONS.md": "# D\n\n## 1. Decided\nDECIDED-MARK\n\n## 4. Open decisions\nOPEN-MARK\n",
+            "HANDOFF.md": "# H\n\n## Where we are\nWHERE-MARK\n\n## Next steps\nNEXT-MARK\n\n## Known traps\nTRAP-MARK\n",
+            "LESSONS.md": "# L\nLESSON-MARK\n",
+            "ACCESS.md": "# A\nACCESS-MARK\n",
+        }
+        for name, body in ledger.items():
+            open(os.path.join(agent, name), "w", encoding="utf-8").write(body)
+        stamp_file = os.path.join(proj, ".claude", "session-start")
+        confirm = "Do not start coding until the user confirms"
+
+        def start(payload):
+            if os.path.exists(stamp_file):
+                os.remove(stamp_file)
+            proc = subprocess.run(["sh", script], input=payload, capture_output=True, text=True, env={**os.environ, "CLAUDE_PROJECT_DIR": proj})
+            return proc, os.path.exists(stamp_file)
+
+        for label, payload in (("startup", '{"source":"startup"}'), ("clear", '{"source":"clear"}'), ("no stdin", ""), ("an unknown source", '{"source":"other"}')):
+            proc, touched = start(payload)
+            out = proc.stdout
+            s.check("skeleton session-start.sh on " + label + " prints the stamp, stage, open decisions and next steps, and asks to wait for the user", proc.returncode == 0 and touched and ("kt-skeleton " + stamp) in out and all(m in out for m in ("STAGE-MARK", "OPEN-MARK", "NEXT-MARK")) and confirm in out, out[:300])
+            s.check("skeleton session-start.sh on " + label + " leaves out the rest of the ledger and the read-in-full instruction", not any(m in out for m in ("WHAT-MARK", "DECIDED-MARK", "WHERE-MARK", "TRAP-MARK", "LESSON-MARK", "ACCESS-MARK")) and "Read the saved file" not in out, out[:300])
+        for src in ("compact", "fork"):
+            proc, touched = start('{"source":"' + src + '"}')
+            out = proc.stdout
+            s.check("skeleton session-start.sh on " + src + " prints the same block without the wait for the user", proc.returncode == 0 and touched and all(m in out for m in ("STAGE-MARK", "OPEN-MARK", "NEXT-MARK")) and confirm not in out, out[:300])
+        proc, touched = start('{"source":"resume"}')
+        s.check("skeleton session-start.sh on resume prints only the stamp line and still touches the session stamp", proc.returncode == 0 and touched and ("kt-skeleton " + stamp) in proc.stdout and len(proc.stdout) < 300 and "STAGE-MARK" not in proc.stdout, proc.stdout[:300])
+        open(os.path.join(agent, "PROJECT.md"), "w", encoding="utf-8").write("# P\n\n## Current stage and consequences\nSTAGE-MARK\n" + ("word " * 60 + "\n") * 80)
+        proc, touched = start('{"source":"startup"}')
+        s.check("skeleton session-start.sh stays under the 10000-char hook limit and names the files to read when it cuts", proc.returncode == 0 and len(proc.stdout) < 10000 and "docs/agent/PROJECT.md" in proc.stdout and "kt-skeleton" in proc.stdout, str(len(proc.stdout)) + " " + proc.stdout[-200:])
 
 
 def skeleton_compare_cases(s):
@@ -978,6 +1006,12 @@ TEXT_WIRING = [
     ("README.md", "/kt:cost"),
     ("README.md", "## Overview"),
     ("rules/work.md", "in the language the user writes in"),
+    ("rules/work.md", "one recorded red run"),
+    ("rules/work.md", "after 2 failed fix attempts on the same check"),
+    ("rules/work.md", "never re-execute a run to see its output again"),
+    ("commands/save.md", "Short path"),
+    ("commands/save.md", "`/clear`"),
+    ("commands/load.md", "HANDOFF is fresh"),
     ("README.md", "in the language the user writes in"),
 ]
 

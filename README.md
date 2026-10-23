@@ -184,17 +184,18 @@ What the commands build and maintain in a repo:
 - `docs/agent/LESSONS.md`: lessons already paid for.
 - `docs/agent/ACCESS.md`: servers, services and where secrets live; locations and how to get in,
   never a secret value.
-- `.claude/hooks/`: a SessionStart bootstrap that prints the ledger and a Stop gate that blocks a
-  handoff when the ledger is older than the session's commits.
+- `.claude/hooks/`: a SessionStart bootstrap that prints the stage, the open decisions and the next
+  steps (a resume gets only the stamp line, since the conversation already holds them), and a Stop
+  gate that blocks a handoff when the ledger is older than the session's commits.
 
 Claude Code replaces any single hook output longer than 10,000 characters with a 2,000-character
-preview. The bootstrap prints the whole ledger, so it is often cut: the first lines tell the agent
-to Read the saved file in full, and `/kt:load` does the same.
+preview. The bootstrap stays under that limit and, when it has to cut, names the files to read;
+`/kt:load` reads the full ledger.
 
 ## Rules and hooks in detail
 
 - `rules/work.md` (at most 100 lines, pinned by a test) is injected by `hooks/session-rules.sh` at
-  SessionStart (startup, resume, clear, compact, fork) and at SubagentStart. A second SubagentStart
+  SessionStart (startup, clear, compact, fork; not resume) and at SubagentStart. A second SubagentStart
   hook (`session-rules.sh docs`) injects the repo's "Open decisions" and "Current stage and
   consequences" sections. Each hook output stays within its own budget below the 10,000-character
   limit; a docs block over budget is cut at a line boundary and ends with a pointer to the files to

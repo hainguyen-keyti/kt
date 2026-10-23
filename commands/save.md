@@ -5,6 +5,10 @@ description: "Close the session: save handoff, decisions, lessons; run the gate;
 End the session in exactly this order (a repo without `docs/agent/` skips steps 1-4 and 6: only
 gate, commit, push, REPORT):
 
+Short path: when the session changed no code, settled no decision, paid for no lesson, found no new
+access and has no active plan, do only step 1 (HANDOFF) and step 9 (REPORT); steps 2-8 have nothing
+to do.
+
 1. Collect parked questions FIRST: if the "Parked questions" section of HANDOFF still has
    unresolved lines, ask the user in one round following the `/kt:ask` ritual right now (the
    answers can create more work; this way the later steps run only once). Then update
@@ -76,4 +80,7 @@ gate, commit, push, REPORT):
    live in that command and are not copied here so they cannot drift (test_hooks.py checks that
    the section names stay in sync). A reminder of the three most-forgotten rules: an empty
    section says `none`, DONE must carry a sha, EVIDENCE is real output. If this session was
-   assigned work by another agent, send the block back to that agent with SendMessage.
+   assigned work by another agent, send the block back to that agent with SendMessage. Then
+   recommend `/clear` before the next task, or once the context passes about 200-250k tokens: a
+   fresh session reloads from the ledger cheaply, a resumed one pays for the whole old context on
+   every turn.

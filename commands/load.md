@@ -1,17 +1,16 @@
 ---
-description: Reload the full project context, restate it, and wait for the user to confirm before going on
+description: Reload the full project context, restate it, and wait for the user to confirm unless the HANDOFF is fresh and the task is named
 ---
 
 Reload the project context in exactly this order, skipping no step:
 
 1. Read (if present): `docs/agent/PROJECT.md`, `docs/agent/HANDOFF.md`, `docs/agent/DECISIONS.md`,
-   `docs/agent/LESSONS.md`, `docs/agent/ACCESS.md` (and `ACCESS.local.md` if present); for any
-   file the "=== docs/agent bootstrap ===" block at the top of the context injected IN FULL, use
-   that copy and do not Read it again (it was injected as the session opened, so it cannot be
-   stale yet); if the block is only a `persisted-output` preview (Claude Code cuts hook output
-   over 10,000 characters down to 2000), treat it as carrying no file at all: Read the saved file
-   the stub names, or Read each file; then the repo's `CLAUDE.md` and the rule files it points
-   to; then `git log --oneline -15` and `git status`. Then the step named
+   `docs/agent/LESSONS.md`, `docs/agent/ACCESS.md` (and `ACCESS.local.md` if present); the
+   "=== docs/agent bootstrap ===" block at the top of the context carries only the stage, open
+   decisions and next steps sections, never a whole file (an older skeleton's block that does
+   carry a whole file may stand in for it), and a `persisted-output` preview of it (Claude Code
+   cuts hook output over 10,000 characters down to 2000) carries nothing; then the repo's
+   `CLAUDE.md` and the rule files it points to; then `git log --oneline -15` and `git status`. Then the step named
    "Reconcile the ledger with the machine", never skipped: the sha and date on the HANDOFF
    "Last updated" line against `git log -1 --format='%h %ci'`; the HANDOFF mtime (`stat`) against
    that commit's date; the `kt-skeleton <version>` stamp in the bootstrap block against the stamp
@@ -48,7 +47,10 @@ Reload the project context in exactly this order, skipping no step:
      minutes without a fence and nobody noticed).
    - The next task per HANDOFF.md.
 4. End with exactly one question: "Have I understood the above correctly, and where do we start?"
+   Exception, the HANDOFF is fresh: the sha on its "Last updated" line is HEAD, its mtime is newer
+   than that commit, the reconcile step found no mismatch, and the user's message already names
+   the task. Then keep the presentation to 3-5 sentences, skip the question and start the task.
 
 FORBIDDEN to do anything else (edit files, run state-changing commands) until the user confirms
-the context is correct. Do not fill gaps with assumptions: anything still ambiguous after reading
+the context is correct, unless the exception in step 4 holds. Do not fill gaps with assumptions: anything still ambiguous after reading
 goes into the presentation as a question.

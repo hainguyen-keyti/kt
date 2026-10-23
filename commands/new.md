@@ -121,17 +121,49 @@ from question 7:
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ -d docs/agent ] || exit 0
 mkdir -p .claude && touch .claude/session-start
+stamp="kt-skeleton 1.3.0 (the kt version whose skeleton these hooks match; /kt:load compares it with the stamp in the installed kt)"
+src=""
+[ -t 0 ] || src="$(cat | python3 -c 'import sys, json
+try:
+    print(json.load(sys.stdin).get("source", ""))
+except Exception:
+    print("")' 2>/dev/null)"
+if [ "$src" = "resume" ]; then
+  echo "$stamp; resumed session: the docs/agent block from when it opened still holds, continue the task in progress."
+  exit 0
+fi
 echo "=== docs/agent bootstrap (injected by the SessionStart hook) ==="
-echo "kt-skeleton 1.0.0 (the kt version whose skeleton these hooks match; /kt:load compares it with the stamp in the installed kt)"
-echo "If this block reached you as a <persisted-output> preview, Read the saved file named in it in full before restating anything: the preview is not the files."
-echo "Before doing anything else: restate to the user, in one short paragraph, the project stage and its consequences, the current state, the open decisions, and the next step, based on the files below. Respect the stage consequences absolutely. Items under '4. Open decisions' in DECISIONS.md must not be re-decided or re-proposed. Do not start coding until the user confirms."
-for f in docs/agent/PROJECT.md docs/agent/HANDOFF.md docs/agent/DECISIONS.md docs/agent/LESSONS.md docs/agent/ACCESS.md; do
-  if [ -f "$f" ]; then
-    echo ""
-    echo "--- $f ---"
-    cat "$f"
-  fi
-done
+echo "$stamp"
+case "$src" in
+  compact|fork) echo "The conversation was compacted or forked: the sections below still bind; continue the task in progress, no restatement or wait needed." ;;
+  *) echo "Before doing anything else: restate to the user, in one short paragraph, the project stage and its consequences, the open decisions, and the next step, based on the sections below. Do not start coding until the user confirms." ;;
+esac
+echo "Respect the stage consequences absolutely. Items under '4. Open decisions' in DECISIONS.md must not be re-decided or re-proposed. The rest of the ledger is in docs/agent/: /kt:load or a Read when a task needs it."
+python3 - <<'PY'
+CAP = 2900
+for path, needle in (("docs/agent/PROJECT.md", "current stage"), ("docs/agent/DECISIONS.md", "open decisions"), ("docs/agent/HANDOFF.md", "next steps")):
+    try:
+        lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+    except OSError:
+        continue
+    out, on = [], False
+    for line in lines:
+        if line.startswith("## "):
+            if on:
+                break
+            on = needle in line.lower()
+        if on:
+            out.append(line)
+    kept, size = [], 0
+    for line in out:
+        if size + len(line) + 1 > CAP:
+            kept.append("[cut to stay under the hook output limit: Read " + path + " for the rest of this section]")
+            break
+        kept.append(line)
+        size += len(line) + 1
+    if kept:
+        print("\n--- " + path + " ---\n" + "\n".join(kept))
+PY
 exit 0
 ```
 
@@ -275,8 +307,9 @@ a self-report; the machine checks mtime and the audit instead.
 ## Step 3: VERIFY before reporting done
 
 1. `chmod +x .claude/hooks/session-start.sh`, then really run both cases: inside the repo
-   `CLAUDE_PROJECT_DIR=$(pwd) sh .claude/hooks/session-start.sh` must print the bootstrap and the
-   content of the docs/agent files and create the `.claude/session-start` stamp; with
+   `echo '{"source":"startup"}' | CLAUDE_PROJECT_DIR=$(pwd) sh .claude/hooks/session-start.sh` must
+   print the bootstrap with the stage, open decisions and next steps sections and create the
+   `.claude/session-start` stamp (with `"resume"` it prints only the stamp line); with
    `CLAUDE_PROJECT_DIR=/tmp` it must stay silent and exit 0. Stop gate: `echo '{}' | CLAUDE_PROJECT_DIR=$(pwd)
    python3 .claude/hooks/stop-gate.py` must exit 0 (no REPORT and no commit in the session means it
    does not bite). The `kt-skeleton <version>` line in session-start.sh names the kt version in
