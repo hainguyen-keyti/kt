@@ -41,10 +41,13 @@ real weighted cost of a session from its transcript.
 - `sh`, `python3` and `git` on the PATH. Without python3 the session banner says so and the
   PreToolUse hooks stay inert. On Windows, `python3` on a fresh machine is often the Microsoft
   Store alias, which only prints an install prompt: the banner treats it as missing. Install
-  Python (`winget install --id Python.Python.3.12 --exact`), put its folder before `WindowsApps`
-  on the user PATH, and add a `python3.exe` next to `python.exe` (a copy works), since the
-  Windows installer creates none. Git Bash is the shell kt is tested in on Windows; `rsync`,
-  `lsof` and `uptime` are not needed, the commands use Python where those would be.
+  Python (`winget install --id Python.Python.3.12 --exact`), add a `python3.exe` next to
+  `python.exe` (a copy works), since the Windows installer creates none, and either put its folder
+  before `WindowsApps` on the user PATH or turn the `python3` alias off under App execution
+  aliases in Windows settings; the alias switch needs no restart of Claude Code. On Windows `sh`
+  need not be on the PATH: Git Bash is required, and Claude Code runs the banner hook through it
+  (shell form in `hooks/hooks.json`, since an exec-form `sh` is not found there). `rsync`, `lsof`
+  and `uptime` are not needed, the commands use Python where those would be.
 - The `design-review` agent needs a browser tool available in the session.
 
 ## Install

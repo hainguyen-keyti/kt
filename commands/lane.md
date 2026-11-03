@@ -41,7 +41,8 @@ not have the directory yet, and the symlink would dangle). Then SYMLINK back to 
 preferring RELATIVE paths so moving the repo does not break them (macOS has no `ln -sr`, so compute
 the relpath yourself; absolute paths are acceptable if the repo will not move). Shared, edited in
 one place and seen by every lane:
-`CLAUDE.md`, `docs/agent/PROJECT.md`, `DECISIONS.md`, `LESSONS.md`, `ACCESS.md`, and the whole
+`CLAUDE.md`, `CLAUDE.local.md` (when the repo has one), `docs/agent/PROJECT.md`, `DECISIONS.md`,
+`LESSONS.md`, `ACCESS.md`, `GLOSSARY.md` (when the repo has one), and the whole
 `docs/agent/plans/` directory (a plan must not vanish when the worktree is removed).
 
 Symlinks are for READING. The harness refuses Write/Edit through a file symlink ("Refusing to write

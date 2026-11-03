@@ -26,7 +26,7 @@ never copied into the plan):
    acceptance, touching engine/contract/event log/money/security) means STOP and wait for
    approval. If the fence blocks you, follow the fence's message; never remove the marker
    yourself.
-4. Done: run the repo's QUICK GATE (the `Quick gate:` line in the repo's CLAUDE.md, only the part
+4. Done: run the repo's QUICK GATE (the `Quick gate:` line in the repo's CLAUDE.md or CLAUDE.local.md, only the part
    relevant to the changed files) and the task's acceptance, and paste the real output (if there
    is no check command, say so plainly); do not run the full gate after each task. Acceptance
    EVIDENCE comes from the plan's committed acceptance script (its PASS/FAIL table and exit code,

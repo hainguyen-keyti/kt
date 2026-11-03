@@ -361,7 +361,8 @@ a self-report; the machine checks mtime and the audit instead.
 3. THE AGENT LAYER IS MACHINE-LOCAL AND NEVER COMMITTED: write these four lines into
    `.git/info/exclude` (NOT `.gitignore`, so nothing is pushed anywhere or visible in the repo):
    `CLAUDE.md`, `AGENTS.md`, `.claude/`, `docs/agent/`. Verify with `git check-ignore -v` on each
-   path (it must point to info/exclude or a machine-level rule) AND `git status --porcelain` must
+   path (it must point to info/exclude, a machine-level rule, or a tracked `.gitignore` line the
+   repo already had; what matters is that the path is ignored) AND `git status --porcelain` must
    not list any file of the standard; use `check-ignore` because `git status` and `git add` stay
    silent when a file is swallowed.
 4. Do NOT commit or push any file of the standard. Never use `git add -f`. Other repo files (if any

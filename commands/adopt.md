@@ -13,6 +13,10 @@ No other template is needed. Supreme principle: LEARN FIRST, BUILD SECOND, BREAK
 python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['kt@kt'][0]['installPath'])"
 ```
 
+If `python3` itself fails (on Windows, "Python was not found" is the Store alias), read
+`~/.claude/plugins/installed_plugins.json` for the path, and say in the proposal that the kt hooks are
+inert until python3 runs: the README's Requirements section has the fix.
+
 Delete nothing and overwrite nothing until the user has approved the proposal in step 2.
 
 ## Step 1: LEARN (read only, touch no file yet)
@@ -72,6 +76,10 @@ approves.
   `.claude/settings.local.json` are updated there, never added a second time to
   `.claude/settings.json` (the hook would run twice); likewise a hooks part that DIFFERS is fixed
   in the group that already runs the kt command, never by adding a second group.
+- A tracked `CLAUDE.md` shared with an upstream or a team (a fork, for example): raise it in step 2.
+  The usual answer is to leave that file untouched and put everything this step would add to it,
+  including the gate lines, into a machine-local `CLAUDE.local.md`, which Claude Code also loads, so
+  merges stay clean. Where kt says "the repo's CLAUDE.md", that file counts.
 - Existing `CLAUDE.md`: keep the good content; a GENERAL RULES BLOCK copied from kt (smallest
   scope, follow the plan, no guessing, tests are inviolable, run it for real...) must be REMOVED
   and replaced with one sentence pointing to the `=== kt rules ===` block, because a repo's
@@ -93,9 +101,10 @@ approves.
   run in a directory without docs/agent it must stay silent and exit 0. `settings.json` must
   parse.
 - Scan every newly created file for em dashes (a kt rule forbids them outright).
-- THE AGENT LAYER IS MACHINE-LOCAL, NEVER COMMITTED: add `CLAUDE.md`,
+- THE AGENT LAYER IS MACHINE-LOCAL, NEVER COMMITTED: add `CLAUDE.md`, `CLAUDE.local.md`,
   `AGENTS.md`, `.claude/`, `docs/agent/` to `.git/info/exclude`; verify with
-  `git check-ignore -v` on each path + `git status --porcelain` showing no standard-set file.
+  `git check-ignore -v` on each path + `git status --porcelain` showing no standard-set file. A
+  path the repo's tracked `.gitignore` already covers passes too.
   No `git add -f`, never propose tracking them.
 - Grandfather EXCEPTION: standard-set files the repo ALREADY TRACKED before
   (`git ls-files --error-unmatch CLAUDE.md` exits 0, the most common case in older repos):

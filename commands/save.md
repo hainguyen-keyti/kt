@@ -32,7 +32,7 @@ to do.
    of that file (only the location and how to get in; if the user pasted a value, do not copy it
    and remind them to rotate).
 5. If the session changed code: run the repo's FULL GATE (the `Full gate:` line in the repo's
-   CLAUDE.md, for example `pnpm check`) and paste the REAL result, UNLESS the latest EVIDENCE in
+   CLAUDE.md or CLAUDE.local.md, for example `pnpm check`) and paste the REAL result, UNLESS the latest EVIDENCE in
    the session already recorded a green full gate at exactly the current HEAD with a clean tree
    (check `git rev-parse --short HEAD` and an empty `git status --porcelain`): then reuse that
    line and do not run it a second time. If the gate is red, report red; no "consider it done"
@@ -70,7 +70,7 @@ to do.
    (the standard set's stop gate blocks every stop when the session has a commit newer than
    HANDOFF, so the ledger must be newer than the last commit). Then back up the ENTIRE
    machine-local agent layer (making up for its lack of git history) with the helper below,
-   run from the repo root. It mirrors `docs/agent/`, `CLAUDE.md` and `.claude/` (minus
+   run from the repo root. It mirrors `docs/agent/`, `CLAUDE.md`, `CLAUDE.local.md` and `.claude/` (minus
    `worktrees/`) into `~/kt-backups/<repo-name>/`, removing what the source no longer has, and
    it refuses on its own to run from a lane worktree (a lane's HANDOFF and dangling symlinks
    would overwrite the main checkout's copy). Paste its output.
