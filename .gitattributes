@@ -1,0 +1,3 @@
+# kt ships sh and Python hooks that Claude Code runs on every machine: check them out with LF everywhere,
+# whatever core.autocrlf says on the host (Windows defaults it to true and would hand out CRLF copies).
+* text=auto eol=lf
