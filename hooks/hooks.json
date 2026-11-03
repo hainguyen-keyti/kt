@@ -5,7 +5,7 @@
       {
         "matcher": "startup|clear|compact|fork",
         "hooks": [
-          { "type": "command", "command": "sh", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh"] }
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh\"" }
         ]
       }
     ],
@@ -13,8 +13,8 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "sh", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh"] },
-          { "type": "command", "command": "sh", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh", "docs"] }
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh\"" },
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh\" docs" }
         ]
       }
     ],

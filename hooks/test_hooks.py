@@ -69,6 +69,19 @@ def kt_installed():
         return False
 
 
+def local_rules_backup_case(s):
+    """A fork that keeps its kt rules in CLAUDE.local.md must get them backed up too."""
+    repo = os.path.join(tempfile.mkdtemp(prefix="kt-backup-local-"), "fork")
+    home = tempfile.mkdtemp(prefix="kt-backup-home-")
+    os.makedirs(repo)
+    with open(os.path.join(repo, "CLAUDE.local.md"), "w", encoding="utf-8") as f:
+        f.write("gates\n")
+    git(repo, "init", "-q")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "root")
+    subprocess.run([sys.executable, os.path.join(HERE, "kt-backup.py")], cwd=repo, capture_output=True, env={**os.environ, "HOME": home, "USERPROFILE": home})
+    s.check("kt-backup.py backs up CLAUDE.local.md", os.path.isfile(os.path.join(home, "kt-backups", "fork", "CLAUDE.local.md")))
+
+
 def utf8_cases(s):
     """Claude Code hands hooks UTF-8 bytes whatever the Windows locale says: an em dash or a Vietnamese
     path must be read as such, so the hooks decode stdin as UTF-8 and write their messages the same way."""
@@ -489,6 +502,10 @@ def packaging_cases(s):
         s.check("hooks.json readable", False, type(exc).__name__)
         return
     s.check("hooks.json readable", True)
+    def words(h):
+        # The banner runs in shell form (sh is not on the Windows PATH), python3 hooks in exec form.
+        return h["args"] if "args" in h else [w.strip('"') for w in h["command"].split()[1:]]
+
     pre = {m["matcher"]: [h["args"][0].rsplit("/", 1)[-1] for h in m["hooks"]] for m in spec.get("PreToolUse", [])}
     for matcher, hooks in EXPECTED_WIRING.items():
         s.check("hooks.json PreToolUse " + matcher + " wires " + ", ".join(hooks), pre.get(matcher) == hooks, "found " + str(pre.get(matcher)))
@@ -499,13 +516,13 @@ def packaging_cases(s):
         s.check("hooks.json SessionStart matcher covers startup, clear, compact, fork", all(k in matcher for k in ("startup", "clear", "compact", "fork")), matcher)
         s.check("hooks.json SessionStart matcher leaves out resume (the resumed conversation already holds the rules)", "resume" not in matcher, matcher)
     sub = spec.get("SubagentStart", [])
-    s.check("hooks.json SubagentStart injects the rules", bool(sub) and any("session-rules.sh" in h["args"][0] for m in sub for h in m["hooks"]))
-    sub_args = [[a.replace("${CLAUDE_PLUGIN_ROOT}/hooks/", "") for a in h["args"]] for m in sub for h in m["hooks"]]
+    s.check("hooks.json SubagentStart injects the rules", bool(sub) and any("session-rules.sh" in words(h)[0] for m in sub for h in m["hooks"]))
+    sub_args = [[a.replace("${CLAUDE_PLUGIN_ROOT}/hooks/", "") for a in words(h)] for m in sub for h in m["hooks"]]
     s.check("hooks.json SubagentStart wires two hooks, rules and docs (the harness caps each hook output at 10000 chars)", sub_args == [["session-rules.sh"], ["session-rules.sh", "docs"]], "found " + str(sub_args))
     for group in spec.values():
         for m in group:
             for h in m["hooks"]:
-                target = h["args"][0].replace("${CLAUDE_PLUGIN_ROOT}", ROOT)
+                target = words(h)[0].replace("${CLAUDE_PLUGIN_ROOT}", ROOT)
                 s.check("hooks.json target exists: " + os.path.relpath(target, ROOT), os.path.isfile(target))
     claude = shutil.which("claude")
     if claude:
@@ -1262,6 +1279,42 @@ def gate_weakening_cases(s):
     s.check("no-gate-weakening --audit <base> lists the committed .only over the range", audit.returncode == 2 and "a.test.js" in audit.stdout, str(audit.returncode) + " " + (audit.stdout + audit.stderr)[:160])
     clean = subprocess.run([sys.executable, hook, "--audit", "HEAD"], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace")
     s.check("no-gate-weakening --audit on an empty range is clean", clean.returncode == 0, str(clean.returncode) + " " + (clean.stdout + clean.stderr)[:120])
+    # The commit the agent really types: another directory, staging in the same command, PowerShell, a message file.
+    skipped = 'test.' + 'skip("adds", () => { expect(1 + 1).toBe(2); });\n'
+
+    def from_elsewhere(command, tool="Bash"):
+        return run_hook("no-gate-weakening.py", {"hook_event_name": "PreToolUse", "tool_name": tool, "cwd": tempfile.gettempdir(), "tool_input": {"command": command}})
+
+    posix = repo.replace("\\", "/")
+    write("src/a.test.js", skipped)
+    git(repo, "add", "-A")
+    proc = from_elsewhere('git -C "' + posix + '" commit -m "tidy"')
+    s.check("no-gate-weakening follows git -C to the repo being committed", proc.returncode == 2 and "a.test.js" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+    if os.name == "nt":
+        msys = "/" + posix[0].lower() + posix[2:]
+        proc = from_elsewhere('git -C "' + msys + '" commit -m "tidy"')
+        s.check("no-gate-weakening reads a Git Bash path (/c/...) on Windows", proc.returncode == 2 and "a.test.js" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+    proc = from_elsewhere('cd "' + posix + '" && git commit -m "tidy"')
+    s.check("no-gate-weakening follows a cd before the commit", proc.returncode == 2 and "a.test.js" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+    proc = from_elsewhere('git -C "' + posix + '" commit -m "tidy"', "PowerShell")
+    s.check("no-gate-weakening scans a commit from the PowerShell tool", proc.returncode == 2 and "a.test.js" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+    proc = from_elsewhere('git -C "' + posix + '" log --grep commit')
+    s.check("no-gate-weakening ignores a git command that only mentions commit", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:120])
+    msg = os.path.join(repo, "..", os.path.basename(repo) + "-msg.txt")
+    with open(msg, "w", encoding="utf-8") as f:
+        f.write("tidy\n\nGate-edit: flaky under load\n")
+    proc = from_elsewhere('git -C "' + posix + '" commit -F "' + os.path.abspath(msg).replace("\\", "/") + '"')
+    s.check("no-gate-weakening reads the Gate-edit reason from a message file", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:120])
+    git(repo, "reset", "-q")
+    proc = from_elsewhere('git -C "' + posix + '" add -A && git -C "' + posix + '" commit -m "tidy"')
+    s.check("no-gate-weakening sees what a git add in the same command is about to stage", proc.returncode == 2 and "a.test.js" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+    proc = from_elsewhere('git -C "' + posix + '" commit -am "tidy"')
+    s.check("no-gate-weakening reads -am as -a (the unstaged diff)", proc.returncode == 2 and "a.test.js" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+    proc = from_elsewhere('git -C "' + posix + '" commit -m "drop -a and --no-verify from the docs"')
+    s.check("no-gate-weakening does not read flags out of the message text", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:120])
+    proc = from_elsewhere('cd "' + posix + '" && git add -A && git commit -am "tidy" -m "Gate-edit: flaky under load"')
+    s.check("no-gate-weakening accepts the reason on a same-command add", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:120])
+    reset()
     proc = run_hook("no-gate-weakening.py", "not json")
     s.check("no-gate-weakening lets a broken payload through like the other hooks", proc.returncode == 0, str(proc.returncode))
 
@@ -1329,6 +1382,21 @@ def destructive_cases(s):
     s.check("no-destructive ignores tools other than Bash and PowerShell", proc.returncode == 0 and decision(proc) == "", str(proc.returncode))
 
 
+def exec_form_cases(s):
+    """Exec form spawns `command` from PATH with no shell. Windows PATH has no sh (only Git Bash's shell form
+    finds it), so a banner wired `sh` + args fails with 'Executable not found' and no session gets the rules."""
+    spec = json.load(open(os.path.join(HERE, "hooks.json"), encoding="utf-8"))["hooks"]
+    entries = [h for groups in spec.values() for g in groups for h in g["hooks"]]
+    s.check("hooks.json never spawns sh in exec form", not [h for h in entries if h.get("command") == "sh" and "args" in h], "")
+    banner = [h for h in entries if "session-rules.sh" in h.get("command", "") + " ".join(h.get("args", []))]
+    s.check("hooks.json quotes the plugin root in the shell-form banner commands", len(banner) == 3 and all('"${CLAUDE_PLUGIN_ROOT}/hooks/session-rules.sh"' in h["command"] for h in banner), str(banner)[:200])
+    sh = shutil.which("bash") or shutil.which("sh")
+    for h in banner:
+        line = h["command"].replace("${CLAUDE_PLUGIN_ROOT}", ROOT.replace("\\", "/"))
+        proc = subprocess.run([sh, "-c", line], input=json.dumps({"hook_event_name": "SubagentStart", "agent_type": "kt-coder", "cwd": ROOT}), capture_output=True, text=True, encoding="utf-8", errors="replace")
+        s.check("shell-form banner command runs: " + line[-30:], proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:120])
+
+
 def dispatcher_cases(s):
     """bash-guards.py runs no-destructive then no-gate-weakening in one process and is wired on Bash and PowerShell."""
     hooks = json.load(open(os.path.join(HERE, "hooks.json"), encoding="utf-8"))["hooks"]["PreToolUse"]
@@ -1391,7 +1459,7 @@ def trailer_cases(s):
 
 def main():
     s = Suite()
-    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases, destructive_cases, dispatcher_cases):
+    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases, destructive_cases, dispatcher_cases, exec_form_cases, local_rules_backup_case):
         fn(s)
     for line in s.failures:
         print("FAIL " + line)

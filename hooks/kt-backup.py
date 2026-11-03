@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import sys
 
-TARGETS = (("docs/agent", "docs-agent", ("worktrees",)), ("CLAUDE.md", "CLAUDE.md", ()), (".claude", "dot-claude", ("worktrees",)))
+TARGETS = (("docs/agent", "docs-agent", ("worktrees",)), ("CLAUDE.md", "CLAUDE.md", ()), ("CLAUDE.local.md", "CLAUDE.local.md", ()), (".claude", "dot-claude", ("worktrees",)))
 
 
 def git(*args):
