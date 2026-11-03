@@ -60,6 +60,26 @@ def run_hook(hook, payload, extra_env=None, args=None, cwd=None):
     )
 
 
+def kt_installed():
+    """True when installed_plugins.json records a kt@kt install (the stop gate's audit needs one)."""
+    reg = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+    try:
+        return bool(json.load(open(reg, encoding="utf-8"))["plugins"].get("kt@kt"))
+    except Exception:
+        return False
+
+
+def utf8_cases(s):
+    """Claude Code hands hooks UTF-8 bytes whatever the Windows locale says: an em dash or a Vietnamese
+    path must be read as such, so the hooks decode stdin as UTF-8 and write their messages the same way."""
+    viet = chr(0x111) + chr(0x1B0) + chr(0x1EDD) + "ng"  # a Vietnamese path segment, built with chr() so this file stays ASCII
+    raw = ('{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/' + viet + '/a.md","content":"one ' + EMDASH + ' two"}}').encode("utf-8")
+    proc = subprocess.run([sys.executable, os.path.join(HERE, "no-emdash.py")], input=raw, capture_output=True)
+    s.check("no-emdash.py blocks a UTF-8 em dash read from raw stdin bytes", proc.returncode == 2, "exit " + str(proc.returncode) + " " + proc.stderr.decode("utf-8", "replace")[:80])
+    proc = subprocess.run([sys.executable, os.path.join(HERE, "no-secret-read.py")], input=('{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/tmp/' + viet + '/.env"}}').encode("utf-8"), capture_output=True)
+    s.check("no-secret-read.py blocks a secret under a non-ASCII path and answers without crashing", proc.returncode == 2 and proc.stderr.decode("utf-8").startswith("BLOCKED"), "exit " + str(proc.returncode) + " " + proc.stderr.decode("utf-8", "replace")[:80])
+
+
 def shim(bindir, name, body):
     """A one-line sh script standing in for a tool on a bare PATH (a symlink needs a privilege on Windows)."""
     path = os.path.join(bindir, name)
@@ -342,7 +362,7 @@ def bash_cases(s):
 
 
 def git(cwd, *args):
-    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd, capture_output=True, text=True)
+    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def audit_cases(s):
@@ -490,12 +510,12 @@ def packaging_cases(s):
     if claude:
         # Validate what ships: tracked files only, so a machine-local CLAUDE.md at the root is not judged.
         with tempfile.TemporaryDirectory() as shipped:
-            for rel in subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.splitlines():
+            for rel in subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.splitlines():
                 src = os.path.join(ROOT, rel)
                 if os.path.isfile(src):
                     os.makedirs(os.path.dirname(os.path.join(shipped, rel)), exist_ok=True)
                     shutil.copy2(src, os.path.join(shipped, rel))
-            proc = subprocess.run([claude, "plugin", "validate", shipped, "--strict"], capture_output=True, text=True)
+            proc = subprocess.run([claude, "plugin", "validate", shipped, "--strict"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         s.check("plugin validate --strict on the tracked files", proc.returncode == 0, (proc.stdout + proc.stderr).strip().splitlines()[-1] if (proc.stdout + proc.stderr).strip() else "no output")
     else:
         s.check("plugin validate --strict on the tracked files", False, "claude CLI not found on PATH")
@@ -513,11 +533,11 @@ def rules_cases(s):
     script = os.path.join(HERE, "session-rules.sh")
     s.check("session-rules.sh exists", os.path.isfile(script))
     if os.path.isfile(script):
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, input="")
+        proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input="")
         s.check("session-rules.sh emits the guard string and the rules", proc.returncode == 0 and "=== kt rules ===" in proc.stdout and "## 2. Scope" in proc.stdout, proc.stdout[:80])
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SessionStart", "source": "startup"}))
+        proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SessionStart", "source": "startup"}))
         s.check("session-rules.sh SessionStart stays plain stdout", proc.returncode == 0 and proc.stdout.startswith("=== kt rules ===") and "## 2. Scope" in proc.stdout, proc.stdout[:80])
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart", "agent_type": "claude"}))
+        proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart", "agent_type": "claude"}))
         ok = False
         detail = proc.stdout[:80]
         try:
@@ -529,11 +549,11 @@ def rules_cases(s):
         s.check("session-rules.sh SubagentStart emits additionalContext JSON (stdout is swallowed for subagents)", proc.returncode == 0 and ok, detail)
         clean = {k: v for k, v in os.environ.items() if k not in ("KT_ALLOW_EMDASH", "KT_ALLOW_OFFPLAN")}
         start = json.dumps({"hook_event_name": "SessionStart", "source": "startup"})
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, input=start, env=clean)
+        proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=start, env=clean)
         s.check("session-rules.sh prints no WARNING when nothing is switched off", proc.returncode == 0 and "WARNING" not in proc.stdout, proc.stdout[:120])
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, input=start, env={**clean, "KT_ALLOW_OFFPLAN": "1"})
+        proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=start, env={**clean, "KT_ALLOW_OFFPLAN": "1"})
         s.check("session-rules.sh warns when KT_ALLOW_OFFPLAN=1 is set", "WARNING: KT_ALLOW_OFFPLAN=1" in proc.stdout and "## 2. Scope" in proc.stdout, proc.stdout[:120])
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart"}), env={**clean, "KT_ALLOW_EMDASH": "1"})
+        proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart"}), env={**clean, "KT_ALLOW_EMDASH": "1"})
         try:
             ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         except Exception:
@@ -545,7 +565,7 @@ def rules_cases(s):
             f.write("# P\n\n## What this is\nthing\n\n## Current stage and consequences\nSTAGE-MARK-RESET\n\n## Architecture on one screen\nARCH-MARK-HIDDEN\n")
         with open(os.path.join(proj, "docs/agent/DECISIONS.md"), "w", encoding="utf-8") as f:
             f.write("# D\n\n## 1. Decided\nDECIDED-MARK-HIDDEN\n\n## 4. Open decisions\n1. [BLOCKS MERGE] PENDING-MARK-TAX\n")
-        proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
+        proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
         try:
             ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         except Exception:
@@ -555,13 +575,13 @@ def rules_cases(s):
         s.check("session-rules.sh docs hook leaves the other sections out", "ARCH-MARK-HIDDEN" not in ctx and "DECIDED-MARK-HIDDEN" not in ctx, ctx[-160:])
         s.check("session-rules.sh docs hook adds no warning when both sections are found", "WARNING" not in ctx, ctx[:160])
         s.check("session-rules.sh docs hook carries only the docs/agent block, not the rules", ctx.startswith("=== docs/agent") and "=== kt rules ===" not in ctx, ctx[:120])
-        proc = subprocess.run(["sh", script], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
+        proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
         try:
             ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         except Exception:
             ctx = proc.stdout
         s.check("session-rules.sh SubagentStart rules hook leaves the docs/agent block to the docs hook", "## 2. Scope" in ctx and "=== docs/agent" not in ctx and "STAGE-MARK-RESET" not in ctx, ctx[-160:])
-        proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart", "cwd": tempfile.mkdtemp(prefix="kt-nodocs-")}), env=clean)
+        proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart", "cwd": tempfile.mkdtemp(prefix="kt-nodocs-")}), env=clean)
         s.check("session-rules.sh docs hook prints nothing when cwd has no docs/agent", proc.returncode == 0 and proc.stdout.strip() == "", proc.stdout[-120:])
         stale = tempfile.mkdtemp(prefix="kt-staledocs-")
         os.makedirs(os.path.join(stale, "docs", "agent"))
@@ -571,7 +591,7 @@ def rules_cases(s):
             f.write("# D\n\n## 4. An older open heading\nPENDING-OLD\n")
 
         def stale_ctx():
-            proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart", "cwd": stale}), env=clean)
+            proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart", "cwd": stale}), env=clean)
             try:
                 return json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
             except Exception:
@@ -584,20 +604,20 @@ def rules_cases(s):
         ctx = stale_ctx()
         s.check("session-rules.sh docs hook injects the stage it found and warns only about the missing open decisions", "STAGE-NEW" in ctx and "docs/agent/DECISIONS.md has no" in ctx and "docs/agent/PROJECT.md has no" not in ctx, ctx[:200])
         sh = shutil.which("sh")
-        proc = subprocess.run([sh, script], capture_output=True, text=True, input=start, env={**clean, "PATH": bare_path()})
+        proc = subprocess.run([sh, script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=start, env={**clean, "PATH": bare_path()})
         s.check("session-rules.sh warns when python3 is missing and still prints the rules", "WARNING: python3 not found" in proc.stdout and "## 2. Scope" in proc.stdout, proc.stdout[:120])
         # The Microsoft Store alias is a python3 that exists on PATH and cannot run: it must warn like an absent one.
-        proc = subprocess.run([sh, script], capture_output=True, text=True, input=start, env={**clean, "PATH": bare_path('printf "Python was not found" >&2\nexit 9009')})
+        proc = subprocess.run([sh, script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=start, env={**clean, "PATH": bare_path('printf "Python was not found" >&2\nexit 9009')})
         s.check("session-rules.sh warns when python3 is a stub that cannot run (Windows Store alias)", "WARNING: python3 not found" in proc.stdout and "## 2. Scope" in proc.stdout, proc.stdout[:120])
 
 
 def repo_hygiene_cases(s):
-    proc = subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True)
+    proc = subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
     for rel in proc.stdout.split():
         text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
         s.check("no-emdash sweep: " + rel, run_hook("no-emdash.py", content(text)).returncode == 0)
     allowed = {chr(0xA7), chr(0x2013), chr(0x2014)}  # section sign, and the two dashes the rules must name
-    for rel in subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.split():
+    for rel in subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.split():
         path = os.path.join(ROOT, rel)
         if not os.path.isfile(path):
             continue
@@ -614,7 +634,7 @@ def repo_hygiene_cases(s):
         s.check("installed cache matches the dev tree (kt not installed here)", True)
         return
     install = recs[0].get("installPath", "")
-    tracked = subprocess.run(["git", "ls-files", "hooks", "rules", "commands", "agents", ".claude-plugin"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+    tracked = subprocess.run(["git", "ls-files", "hooks", "rules", "commands", "agents", ".claude-plugin"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.split()
     stale = []
     for rel in tracked:
         dev, inst = os.path.join(ROOT, rel), os.path.join(install, rel)
@@ -658,7 +678,7 @@ def stop_gate_cases(s):
             return p
 
         def run(payload):
-            return subprocess.run([sys.executable, gate], input=json.dumps(payload), capture_output=True, text=True, env={**os.environ, "CLAUDE_PROJECT_DIR": repo})
+            return subprocess.run([sys.executable, gate], input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace", env={**os.environ, "CLAUDE_PROJECT_DIR": repo})
 
         proc = run({"transcript_path": transcript("done\n## REPORT\nSTATE: x")})
         s.check("stop-gate blocks a handoff when HANDOFF.md is older than the session stamp", proc.returncode == 2 and "HANDOFF" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:80])
@@ -681,11 +701,17 @@ def stop_gate_cases(s):
         open(os.path.join(repo, "docs/agent/plans/p.md"), "w", encoding="utf-8").write(plan_text(["src/*"]))
         open(os.path.join(repo, ".claude/active-plan"), "w", encoding="utf-8").write(json.dumps({"plan": "docs/agent/plans/p.md", "base": base}))
         open(os.path.join(repo, "stray.txt"), "w").write("x\n")
-        proc = run({"transcript_path": transcript("## REPORT")})
-        s.check("stop-gate blocks a handoff when the plan audit finds drift", proc.returncode == 2 and "stray.txt" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
-        os.remove(os.path.join(repo, "stray.txt"))
-        proc = run({"transcript_path": transcript("## REPORT")})
-        s.check("stop-gate passes a handoff when the plan audit is clean", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:80])
+        # The audit runs the fence of the INSTALLED kt (the gate reads installed_plugins.json), so these two
+        # cases need kt installed; a dev machine without it skips them, like repo_hygiene_cases does.
+        if kt_installed():
+            proc = run({"transcript_path": transcript("## REPORT")})
+            s.check("stop-gate blocks a handoff when the plan audit finds drift", proc.returncode == 2 and "stray.txt" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+            os.remove(os.path.join(repo, "stray.txt"))
+            proc = run({"transcript_path": transcript("## REPORT")})
+            s.check("stop-gate passes a handoff when the plan audit is clean", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:80])
+        else:
+            os.remove(os.path.join(repo, "stray.txt"))
+            s.check("stop-gate plan audit cases (kt not installed here, skipped)", True)
         # Git condition: a commit made in this session that is newer than
         # HANDOFF.md blocks ANY stop, REPORT or not; a silent session can no longer leave the ledger behind.
         os.remove(os.path.join(repo, ".claude/active-plan"))
@@ -726,7 +752,7 @@ def subagent_long_section_cases(s):
     body = "\n".join(str(i) + ". [NON-BLOCKING] item " + str(i) for i in range(1, 69))
     with open(os.path.join(proj, "docs/agent/DECISIONS.md"), "w", encoding="utf-8") as f:
         f.write("# D\n\n## 4. Open decisions\n" + body + "\n70. [NON-BLOCKING] LAST-MARK-70\n\n## 5. Other\nAFTER-MARK\n")
-    proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
+    proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
     try:
         ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
     except Exception:
@@ -761,7 +787,7 @@ def hook_budget_cases(s):
         f.write("# D\n\n## 4. Open decisions\n" + items + "\nBIG-TAIL-MARK\n")
 
     def ctx_of(args):
-        proc = subprocess.run(["sh", script] + args, capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
+        proc = subprocess.run(["sh", script] + args, capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
         try:
             return json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         except Exception:
@@ -776,7 +802,7 @@ def hook_budget_cases(s):
     s.check("session-rules.sh docs hook ends a cut block with a pointer to the files to read", "docs/agent/PROJECT.md" in last and "docs/agent/DECISIONS.md" in last and "BIG-TAIL-MARK" not in docs, last[:200])
     body = lines[1:-1]
     s.check("session-rules.sh docs hook cuts at a line boundary", bool(body) and all(l == "" or l.startswith("#") or l.endswith("s" * 60) or l.endswith("d" * 60) for l in body), (body[-1] if body else "")[-80:])
-    start = subprocess.run(["sh", script], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SessionStart", "source": "startup", "cwd": proj}), env=clean)
+    start = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SessionStart", "source": "startup", "cwd": proj}), env=clean)
     s.check("session-rules.sh SessionStart output stays under the hook budget", js_len(start.stdout.strip()) <= HOOK_BUDGET, str(js_len(start.stdout.strip())) + " chars")
 
 
@@ -797,7 +823,7 @@ def docs_block_review_cases(s):
                 f.write(project)
         with open(os.path.join(proj, "docs/agent/DECISIONS.md"), "wb") as f:
             f.write(decisions)
-        proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
+        proc = subprocess.run(["sh", script, "docs"], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart", "cwd": proj}), env=clean)
         try:
             return json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         except Exception:
@@ -868,7 +894,7 @@ def skeleton_stamp_cases(s):
         def start(payload):
             if os.path.exists(stamp_file):
                 os.remove(stamp_file)
-            proc = subprocess.run(["sh", script], input=payload, capture_output=True, text=True, env={**os.environ, "CLAUDE_PROJECT_DIR": proj})
+            proc = subprocess.run(["sh", script], input=payload, capture_output=True, text=True, encoding="utf-8", errors="replace", env={**os.environ, "CLAUDE_PROJECT_DIR": proj})
             return proc, os.path.exists(stamp_file)
 
         for label, payload in (("startup", '{"source":"startup"}'), ("clear", '{"source":"clear"}'), ("no stdin", ""), ("an unknown source", '{"source":"other"}')):
@@ -910,7 +936,7 @@ def skeleton_compare_cases(s):
                 os.makedirs(os.path.dirname(os.path.join(root, rel)), exist_ok=True)
                 open(os.path.join(root, rel), "w", encoding="utf-8").write(body)
             before = {rel: open(os.path.join(root, rel), "rb").read() for rel in files}
-            proc = subprocess.run([sys.executable, script, new_md, root], capture_output=True, text=True)
+            proc = subprocess.run([sys.executable, script, new_md, root], capture_output=True, text=True, encoding="utf-8", errors="replace")
             after = {rel: open(os.path.join(root, rel), "rb").read() for rel in files}
             return proc, before == after and sorted(os.listdir(os.path.join(root, ".claude"))) == sorted({r.split("/")[1] for r in files})
 
@@ -986,7 +1012,7 @@ def cost_cases(s):
             f.write(json.dumps({"type": "user", "cwd": os.path.join(tmp, "elsewhere"), "sessionId": "zzz", "message": {"role": "user", "content": "hi"}}) + "\n")
             f.write(json.dumps({"type": "assistant", "cwd": os.path.join(tmp, "elsewhere"), "sessionId": "zzz", "message": {"id": "z1", "usage": usage(0, 0, 0, 999999), "content": []}}) + "\n")
         env = {**os.environ, "KT_COST_PROJECTS": os.path.join(tmp, "projects")}
-        proc = subprocess.run([sys.executable, script], cwd=cwd, capture_output=True, text=True, env=env)
+        proc = subprocess.run([sys.executable, script], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
         out = proc.stdout
         s.check("cost script runs and picks the session whose cwd matches (not the newest anywhere)", proc.returncode == 0 and "sid" in out and "zzz" not in out, (proc.stderr or out)[:160])
         # m1 once: 10 + 1000*2 + 20000*0.1 + 100*5 = 4510; m2: 500*2 + 21000*0.1 + 50*5 = 3350; total 7860 over 2 turns
@@ -994,7 +1020,7 @@ def cost_cases(s):
         s.check("cost script breaks the total into cache read, cache write, output, input", all(k in out for k in ("cache read", "cache write", "output", "input")), out[:200])
         # subagent: 2000*2 + 10*5 = 4050
         s.check("cost script sums subagent transcripts under <session>/subagents", "4,050" in out and "agent-x" in out, out[:200])
-        proc = subprocess.run([sys.executable, script, os.path.join(other, "zzz.jsonl")], cwd=cwd, capture_output=True, text=True, env=env)
+        proc = subprocess.run([sys.executable, script, os.path.join(other, "zzz.jsonl")], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
         s.check("cost script accepts an explicit transcript path", proc.returncode == 0 and "zzz" in proc.stdout, (proc.stderr or proc.stdout)[:160])
 
 
@@ -1132,7 +1158,7 @@ def trailer_cases(s):
 
 def main():
     s = Suite()
-    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases):
+    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases):
         fn(s)
     for line in s.failures:
         print("FAIL " + line)

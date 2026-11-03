@@ -47,6 +47,10 @@ import re
 import subprocess
 import sys
 
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    # Claude Code hands hooks UTF-8 whatever the Windows locale says: read and answer in UTF-8.
+    _stream.reconfigure(encoding="utf-8", errors="replace")
+
 MARKER_REL = os.path.join(".claude", "active-plan")
 HEADING_RE = re.compile(r"^##\s+(?:\d+\.\s*)?Blast radius$", re.IGNORECASE)
 CATCH_ALL_RE = re.compile(r"^[*/.?]*$")

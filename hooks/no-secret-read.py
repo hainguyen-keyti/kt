@@ -20,6 +20,10 @@ import os
 import re
 import sys
 
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    # Claude Code hands hooks UTF-8 whatever the Windows locale says: read and answer in UTF-8.
+    _stream.reconfigure(encoding="utf-8", errors="replace")
+
 SECRET_BASENAME_GLOBS = [
     "*.pem", "*.key", "id_rsa*", "id_ed25519*", "id_ecdsa*", "id_dsa*",
     ".env*", "*.env", ".netrc", ".npmrc", ".pgpass", ".htpasswd", ".pypirc",

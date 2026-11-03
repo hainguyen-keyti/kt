@@ -22,6 +22,10 @@ import os
 import re
 import sys
 
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    # Claude Code hands hooks UTF-8 whatever the Windows locale says: read and answer in UTF-8.
+    _stream.reconfigure(encoding="utf-8", errors="replace")
+
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("kt_fence", os.path.join(HERE, "no-offplan-edit.py"))

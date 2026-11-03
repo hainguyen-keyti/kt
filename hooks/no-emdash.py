@@ -20,6 +20,10 @@ import re
 import subprocess
 import sys
 
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    # Claude Code hands hooks UTF-8 whatever the Windows locale says: read and answer in UTF-8.
+    _stream.reconfigure(encoding="utf-8", errors="replace")
+
 EM_DASH = chr(0x2014)
 EN_DASH_BREAK_RE = re.compile("(^|\\s)" + chr(0x2013) + "(\\s|$)")
 # The agent does not sign the owner's work. The strict reading is deliberate:

@@ -10,6 +10,8 @@
 # block each get their own budget, and a block cut to fit names the files to read in full.
 root="$(cd "$(dirname "$0")/.." && pwd)"
 [ -f "$root/rules/work.md" ] || exit 0
+# The inline python below parses Claude Code's UTF-8 payload and prints UTF-8 JSON; the Windows locale is cp1252.
+export PYTHONUTF8=1
 mode="${1:-}"
 banner="=== kt rules === (injected by the kt plugin at SessionStart and SubagentStart; precedence: repo CLAUDE.md > ~/CLAUDE.md > these rules)"
 warn=""
