@@ -1181,6 +1181,88 @@ def backup_cases(s):
     s.check("kt-backup.py refuses to run from a lane worktree and says so", proc.returncode == 0 and "lane" in proc.stdout.lower() and tree(dest) == ["CLAUDE.md", "docs-agent/HANDOFF.md", "dot-claude/hooks/x.sh"], (proc.stdout + proc.stderr)[:160])
 
 
+def gate_weakening_cases(s):
+    """no-gate-weakening.py: a commit that skips, focuses or removes a test, regenerates a snapshot without its
+    owning test, or runs with --no-verify, is refused unless the message carries a `Gate-edit: <reason>` line;
+    `--audit <base>` lists the same hunks over a committed range."""
+    hook = os.path.join(HERE, "no-gate-weakening.py")
+    s.check("hooks/no-gate-weakening.py exists", os.path.isfile(hook))
+    if not os.path.isfile(hook):
+        return
+    repo = tempfile.mkdtemp(prefix="kt-gate-")
+    os.makedirs(os.path.join(repo, "src", "__snapshots__"))
+    files = {
+        "src/a.test.js": 'test("adds", () => { expect(1 + 1).toBe(2); });\nit("keeps", () => { expect(true).toBe(true); });\n',
+        "src/__snapshots__/a.test.js.snap": "exports[`adds 1`] = `2`;\n",
+        "src/test_b.py": "def test_b():\n    assert 1\n",
+        "src/util.js": "export const x = 1;\n",
+    }
+    for rel, body in files.items():
+        with open(os.path.join(repo, rel), "w", encoding="utf-8", newline="\n") as f:
+            f.write(body)
+    git(repo, "init", "-q")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "base")
+    base = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    def write(rel, body):
+        with open(os.path.join(repo, rel), "w", encoding="utf-8", newline="\n") as f:
+            f.write(body)
+
+    def commit_hook(command):
+        return run_hook("no-gate-weakening.py", {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": repo, "tool_input": {"command": command}})
+
+    def reset():
+        git(repo, "reset", "-q")
+        git(repo, "checkout", "-q", "--", ".")
+
+    write("src/a.test.js", files["src/a.test.js"].replace('test("adds"', 'test.skip("adds"'))
+    git(repo, "add", "-A")
+    proc = commit_hook('git commit -m "tidy"')
+    s.check("no-gate-weakening blocks a commit that adds .skip, naming the file and the way through", proc.returncode == 2 and "a.test.js" in proc.stderr and "Gate-edit:" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:160])
+    proc = commit_hook('git commit -m "tidy" -m "Gate-edit: flaky under load, tracked in DECISIONS"')
+    s.check("no-gate-weakening lets the same commit through with a Gate-edit trailer", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:120])
+    proc = commit_hook("ls -la")
+    s.check("no-gate-weakening ignores a command that is not a commit", proc.returncode == 0, str(proc.returncode))
+    reset()
+    write("src/a.test.js", 'test("adds", () => { expect(1 + 1).toBe(2); });\n')
+    git(repo, "add", "-A")
+    proc = commit_hook('git commit -m "drop a test"')
+    s.check("no-gate-weakening blocks a commit that removes a test function", proc.returncode == 2 and "a.test.js" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:160])
+    reset()
+    write("src/test_b.py", "import pytest\n@pytest.mark.skip\ndef test_b():\n    assert 1\n")
+    git(repo, "add", "-A")
+    proc = commit_hook('git commit -m "skip"')
+    s.check("no-gate-weakening blocks an added @pytest.mark.skip", proc.returncode == 2 and "test_b.py" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:160])
+    reset()
+    write("src/__snapshots__/a.test.js.snap", "exports[`adds 1`] = `3`;\n")
+    git(repo, "add", "-A")
+    proc = commit_hook('git commit -m "update snapshot"')
+    s.check("no-gate-weakening blocks a snapshot change whose owning test did not change", proc.returncode == 2 and "a.test.js.snap" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:160])
+    write("src/a.test.js", files["src/a.test.js"] + "\n")
+    git(repo, "add", "-A")
+    proc = commit_hook('git commit -m "update snapshot with its test"')
+    s.check("no-gate-weakening lets a snapshot change through when its owning test changed too", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:120])
+    reset()
+    write("src/util.js", "export const x = 2;\n")
+    git(repo, "add", "-A")
+    proc = commit_hook('git commit -m "bump x"')
+    s.check("no-gate-weakening lets an ordinary commit through", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:120])
+    proc = commit_hook('git commit --no-verify -m "bump x"')
+    s.check("no-gate-weakening blocks --no-verify on a commit", proc.returncode == 2 and "no-verify" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+    write("src/a.test.js", files["src/a.test.js"].replace('it("keeps"', 'it.only("keeps"'))
+    git(repo, "add", "-A")
+    proc = commit_hook('git commit -a -m "focus"')
+    s.check("no-gate-weakening blocks .only committed with -a (reads the HEAD diff)", proc.returncode == 2 and "a.test.js" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:160])
+    git(repo, "commit", "-q", "-m", "focus landed")
+    audit = subprocess.run([sys.executable, hook, "--audit", base], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    s.check("no-gate-weakening --audit <base> lists the committed .only over the range", audit.returncode == 2 and "a.test.js" in audit.stdout, str(audit.returncode) + " " + (audit.stdout + audit.stderr)[:160])
+    clean = subprocess.run([sys.executable, hook, "--audit", "HEAD"], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    s.check("no-gate-weakening --audit on an empty range is clean", clean.returncode == 0, str(clean.returncode) + " " + (clean.stdout + clean.stderr)[:120])
+    proc = run_hook("no-gate-weakening.py", "not json")
+    s.check("no-gate-weakening lets a broken payload through like the other hooks", proc.returncode == 0, str(proc.returncode))
+
+
 def report_drift_cases(s):
     for rel in REPORT_FILES:
         text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
@@ -1210,7 +1292,7 @@ def trailer_cases(s):
 
 def main():
     s = Suite()
-    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases):
+    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases):
         fn(s)
     for line in s.failures:
         print("FAIL " + line)
