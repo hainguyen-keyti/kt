@@ -68,9 +68,11 @@ COPY (per lane, must differ between lanes):
   whole-tree gate reads other agents' half-done state (already hit: `Cannot find name` while
   another agent had inserted a call but not yet the import).
 - Lane ceiling per machine, declared by the repo in CLAUDE.md (for example 3 heavy lanes with a
-  browser or dev server, 6 in total, sized to its RAM): before opening a lane, check `uptime`
-  (1-minute load) against `sysctl -n hw.ncpu` (macOS) or `nproc`; if load exceeds the core count,
-  do not open another. CPU-heavy tests or tests that spawn child processes need their own timeouts,
+  browser or dev server, 6 in total, sized to its RAM): before opening a lane, compare the
+  1-minute load with the core count, `python3 -c "import os;print(os.getloadavg()[0], os.cpu_count())"`;
+  if load exceeds the core count, do not open another. Windows has no load average (the call
+  raises): count the lanes already open against the repo's ceiling instead and say that the load
+  was not measured. CPU-heavy tests or tests that spawn child processes need their own timeouts,
   because a loaded machine makes a test with a 5-second timeout flaky and it gets rerun.
 - `.claude/settings.json` and `.claude/hooks/`: copy (not symlink, so a lane that breaks a hook
   does not drag every other lane down with it).
@@ -79,8 +81,9 @@ COPY (per lane, must differ between lanes):
 - `.claude/launch.json` if present: copy it, then CHANGE THE PORT: offset = 10 times the number of
   existing lanes including the one just created in step 2 (`git worktree list | wc -l` minus 1);
   for the first lane 5173 becomes 5183, the second lane gets 5193. If the repo has ever REMOVED a
-  lane, the count drops and can hand out a port already in use: check `lsof -i :<port>` before
-  settling on it. Record the new port in the lane's HANDOFF. Port collisions are the most common
+  lane, the count drops and can hand out a port already in use: probe it before settling on it,
+  `python3 -c "import socket,sys;s=socket.socket();s.settimeout(1);print('busy' if s.connect_ex(('127.0.0.1',int(sys.argv[1])))==0 else 'free')" <port>`
+  (works on every OS; `lsof` is not on Windows). Record the new port in the lane's HANDOFF. Port collisions are the most common
   failure when running in parallel.
 
 ## Step 4: verify; report done only when all five cases pass

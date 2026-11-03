@@ -43,7 +43,8 @@ real weighted cost of a session from its transcript.
   Store alias, which only prints an install prompt: the banner treats it as missing. Install
   Python (`winget install --id Python.Python.3.12 --exact`), put its folder before `WindowsApps`
   on the user PATH, and add a `python3.exe` next to `python.exe` (a copy works), since the
-  Windows installer creates none.
+  Windows installer creates none. Git Bash is the shell kt is tested in on Windows; `rsync`,
+  `lsof` and `uptime` are not needed, the commands use Python where those would be.
 - The `design-review` agent needs a browser tool available in the session.
 
 ## Install
