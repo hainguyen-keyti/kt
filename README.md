@@ -39,7 +39,11 @@ real weighted cost of a session from its transcript.
 - Claude Code with plugin support, including SessionStart and SubagentStart hooks (kt is tested on
   the 2.1.x releases).
 - `sh`, `python3` and `git` on the PATH. Without python3 the session banner says so and the
-  PreToolUse hooks stay inert.
+  PreToolUse hooks stay inert. On Windows, `python3` on a fresh machine is often the Microsoft
+  Store alias, which only prints an install prompt: the banner treats it as missing. Install
+  Python (`winget install --id Python.Python.3.12 --exact`), put its folder before `WindowsApps`
+  on the user PATH, and add a `python3.exe` next to `python.exe` (a copy works), since the
+  Windows installer creates none.
 - The `design-review` agent needs a browser tool available in the session.
 
 ## Install

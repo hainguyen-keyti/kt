@@ -60,6 +60,24 @@ def run_hook(hook, payload, extra_env=None, args=None, cwd=None):
     )
 
 
+def shim(bindir, name, body):
+    """A one-line sh script standing in for a tool on a bare PATH (a symlink needs a privilege on Windows)."""
+    path = os.path.join(bindir, name)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("#!/bin/sh\n" + body + "\n")
+    os.chmod(path, 0o755)
+
+
+def bare_path(python3_body=None):
+    """A PATH holding only what session-rules.sh needs besides python3, plus an optional python3 stand-in."""
+    bindir = tempfile.mkdtemp(prefix="kt-nopython-")
+    for tool in ("cat", "dirname"):
+        shim(bindir, tool, 'exec "' + shutil.which(tool).replace("\\", "/") + '" "$@"')
+    if python3_body is not None:
+        shim(bindir, "python3", python3_body)
+    return bindir
+
+
 def content(text):
     return {"tool_input": {"content": text}}
 
@@ -565,11 +583,12 @@ def rules_cases(s):
             f.write("# P\n\n## Current stage and consequences\nSTAGE-NEW\n")
         ctx = stale_ctx()
         s.check("session-rules.sh docs hook injects the stage it found and warns only about the missing open decisions", "STAGE-NEW" in ctx and "docs/agent/DECISIONS.md has no" in ctx and "docs/agent/PROJECT.md has no" not in ctx, ctx[:200])
-        bindir = tempfile.mkdtemp(prefix="kt-nopython-")
-        for tool in ("cat", "dirname"):
-            os.symlink(shutil.which(tool), os.path.join(bindir, tool))
-        proc = subprocess.run(["/bin/sh", script], capture_output=True, text=True, input=start, env={**clean, "PATH": bindir})
+        sh = shutil.which("sh")
+        proc = subprocess.run([sh, script], capture_output=True, text=True, input=start, env={**clean, "PATH": bare_path()})
         s.check("session-rules.sh warns when python3 is missing and still prints the rules", "WARNING: python3 not found" in proc.stdout and "## 2. Scope" in proc.stdout, proc.stdout[:120])
+        # The Microsoft Store alias is a python3 that exists on PATH and cannot run: it must warn like an absent one.
+        proc = subprocess.run([sh, script], capture_output=True, text=True, input=start, env={**clean, "PATH": bare_path('printf "Python was not found" >&2\nexit 9009')})
+        s.check("session-rules.sh warns when python3 is a stub that cannot run (Windows Store alias)", "WARNING: python3 not found" in proc.stdout and "## 2. Scope" in proc.stdout, proc.stdout[:120])
 
 
 def repo_hygiene_cases(s):
