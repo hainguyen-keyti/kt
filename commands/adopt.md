@@ -30,6 +30,9 @@ Delete nothing and overwrite nothing until the user has approved the proposal in
      where keys are kept. Gather it into ACCESS.md but NEVER copy a secret value; if a secret
      value sits in plain text in any file (old files included), report it to the user as a
      finding that must be dealt with.
+  6. TERMS: the project's own words used consistently across code, docs and commits (and the
+     synonyms that compete with them). They seed `GLOSSARY.md`; a shared word makes every later
+     HANDOFF line and question shorter.
 - Project STAGE (pre-launch or live, real users or not yet, which environments exist): infer it
   from evidence but do NOT settle it yourself. Interview the user to confirm the stage and its
   CONSEQUENCES.
@@ -48,7 +51,9 @@ approves.
 - Create `docs/agent/`: `PROJECT.md` (stage + consequences ALREADY confirmed by the user),
   `DECISIONS.md` (4 sections: decided / rejected / deferred with a due date / open decisions with
   a [BLOCKS MERGE] or [NON-BLOCKING] label and a risk area label), `LESSONS.md`, `HANDOFF.md`,
-  `ACCESS.md` (access map from ore number 5, only locations and how to get in, no secret values).
+  `ACCESS.md` (access map from ore number 5, only locations and how to get in, no secret values),
+  and `GLOSSARY.md` from ore number 6 (the format is in `new.md`; create it only when at least three
+  terms were found, otherwise leave it to the first session that settles one).
   The content is the ore panned in step 1, NOT an empty template. Each file under ~80 lines,
   absolute dates.
 - Hooks: create `.claude/hooks/session-start.sh`, `.claude/hooks/stop-gate.py` and the hooks

@@ -5,7 +5,8 @@ description: Reload the full project context, restate it, and wait for the user 
 Reload the project context in exactly this order, skipping no step:
 
 1. Read (if present): `docs/agent/PROJECT.md`, `docs/agent/HANDOFF.md`, `docs/agent/DECISIONS.md`,
-   `docs/agent/LESSONS.md`, `docs/agent/ACCESS.md` (and `ACCESS.local.md` if present); the
+   `docs/agent/LESSONS.md`, `docs/agent/ACCESS.md` (and `ACCESS.local.md` if present),
+   `docs/agent/GLOSSARY.md` (use its words from here on); the
    "=== docs/agent bootstrap ===" block at the top of the context carries only the stage, open
    decisions and next steps sections, never a whole file (an older skeleton's block that does
    carry a whole file may stand in for it), and a `persisted-output` preview of it (Claude Code

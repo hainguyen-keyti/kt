@@ -29,6 +29,11 @@ Ask the user in clusters, each question with a suggested default for a quick pic
    get in, NEVER for a secret value; if the user pastes a value anyway, say that a key pasted into
    a chat counts as burned and must be rotated.
 
+8. Terms: the three to eight words this project uses that an outsider would misread or that have
+   several names in the room (the thing a "job" is, what "publish" means here, which word is used
+   for the customer). Each gets one sentence and the synonyms to avoid. Skip when the user has none
+   yet; the file is created on the first term that gets settled.
+
 ## Step 2: BUILD (fill the templates below with the real answers)
 
 If the folder is not a git repo yet, run `git init` first. Create exactly these files. Every section
@@ -99,6 +104,14 @@ Template: title "LESSONS.md: project lessons (read before similar work)"; note: 
 lines: what happened, the cause, the right way, with an absolute date. A lesson that repeats a
 second time is promoted to a rule in CLAUDE.md or to a hook, then deleted from here. Keep this file
 under 40 lines." The list starts empty.
+
+### File `docs/agent/GLOSSARY.md` (only when question 8 produced terms; otherwise created later)
+
+Template: title "GLOSSARY.md: the project's shared language (read before naming anything; at most 40 lines)";
+rule at the top: "One line per term: **Term**: one sentence saying what it IS, then `avoid:` the synonyms
+not to use. Project concepts only, no general programming words. Code, docs, HANDOFF and questions use
+these words; a term missing here is added the moment it is settled, never invented twice." Then the terms
+from question 8. Shorter sentences everywhere are the point: a shared word replaces a clause.
 
 ### File `docs/agent/ACCESS.md`
 
