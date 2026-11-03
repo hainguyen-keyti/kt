@@ -15,9 +15,12 @@ to do.
    `docs/agent/HANDOFF.md`: what was just done, branch state, verify commands, next steps, newly
    hit traps, the "Active plan" section if a plan is active. Keep it short: HANDOFF is a handoff
    note, not a diary; delete stale entries (the detailed history is already in git log). Measure
-   `wc -c docs/agent/*.md` and cut stale HANDOFF entries: the bootstrap block is reread on every
-   turn of the next session (moving "Decided" entries out of the injected block into an archive
-   was proposed and rejected).
+   `wc -lc docs/agent/HANDOFF.md docs/agent/LESSONS.md` and move stale entries to `HANDOFF-archive.md`
+   and `LESSONS-archive.md` until HANDOFF is within 120 lines and 12000 bytes and LESSONS within 40
+   lines: the repo's stop gate blocks a stop after an in-session commit, and every handoff, while
+   either is over its ceiling, because the bootstrap block is reread on every turn of the next
+   session (moving "Decided" entries out of the injected block into an archive was proposed and
+   rejected).
 2. Durable decisions settled in the session: record them in `docs/agent/DECISIONS.md` under
    "Decided" (date + reason). Proposals the user turned down: under "Rejected". New questions
    with no answer yet: under "Open decisions".

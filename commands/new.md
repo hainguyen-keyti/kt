@@ -121,7 +121,7 @@ from question 7:
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ -d docs/agent ] || exit 0
 mkdir -p .claude && touch .claude/session-start
-stamp="kt-skeleton 1.3.0 (the kt version whose skeleton these hooks match; /kt:load compares it with the stamp in the installed kt)"
+stamp="kt-skeleton 1.5.0 (the kt version whose skeleton these hooks match; /kt:load compares it with the stamp in the installed kt)"
 src=""
 [ -t 0 ] || src="$(cat | python3 -c 'import sys, json
 try:
@@ -169,29 +169,55 @@ exit 0
 
 ### File `.claude/hooks/stop-gate.py`
 
-A machine stop gate with two checks and no trust in self-report. One, on EVERY stop: if a commit was
+A machine stop gate with three checks and no trust in self-report. One, on EVERY stop: if a commit was
 made in this session (newer than the `.claude/session-start` stamp that session-start.sh touches at
 every session start) and `docs/agent/HANDOFF.md` is older than that commit, block, so a session that
 ends quietly cannot leave the ledger behind; HANDOFF counts as fresh at max(mtime, time of the last
 commit touching it) so a repo that tracks its ledger is not blocked by mistake. Two, when the
 agent's last message carries the `## REPORT` block (the handoff signal): HANDOFF must also be newer
-than the session stamp and, with an active plan, the kt audit must pass. A repo without docs/agent,
-or the second stop after a block (`stop_hook_active`), passes. The session stamp is touched again on
-every app resume, so a commit made before the last resume is no longer caught by check one.
+than the session stamp and, with an active plan, the kt audit must pass. Three, after an in-session
+commit or on a handoff, the ledger must fit its ceilings (HANDOFF.md 120 lines and 12000 bytes,
+LESSONS.md 40 lines): the bootstrap rereads these files every session, so an oversized ledger is a
+token cost paid on every turn; stale entries move to the `*-archive.md` files. A repo without
+docs/agent, or the second stop after a block (`stop_hook_active`), passes. The session stamp is
+touched again on every app resume, so a commit made before the last resume is no longer caught by
+check one.
 
 ```
 #!/usr/bin/env python3
-"""Stop gate, two machine checks, no self-report trusted.
+"""Stop gate, three machine checks, no self-report trusted.
 1. Any stop: a commit made in this session (newer than .claude/session-start) that is newer than
    docs/agent/HANDOFF.md blocks, so a silent session cannot leave the ledger behind. HANDOFF counts
    as fresh at max(mtime, time of the last commit touching it), which keeps tracked ledgers honest.
 2. A handoff (last assistant message carries the REPORT block): HANDOFF.md must also be newer than
    the session stamp and, with an active plan, the kt fence audit must pass.
+3. After an in-session commit, or on a handoff: HANDOFF.md within 120 lines and 12000 bytes and
+   LESSONS.md within 40 lines, because the bootstrap rereads them every session.
 Everything else passes through."""
 import json
 import os
 import subprocess
 import sys
+
+CEILINGS = (("docs/agent/HANDOFF.md", 120, 12000), ("docs/agent/LESSONS.md", 40, 0))
+
+
+def oversize():
+    out = []
+    for rel, max_lines, max_bytes in CEILINGS:
+        if not os.path.isfile(rel):
+            continue
+        data = open(rel, "rb").read()
+        lines = data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
+        if lines > max_lines or (max_bytes and len(data) > max_bytes):
+            ceiling = str(max_lines) + " lines" + (" and " + str(max_bytes) + " bytes" if max_bytes else "")
+            out.append(rel + " is " + str(lines) + " lines and " + str(len(data)) + " bytes, over its ceiling of " + ceiling + ": move stale entries to its *-archive.md before stopping (the bootstrap rereads this file every session).")
+    return out
+
+
+def committed_in_session(stamp):
+    head = git_time()
+    return bool(head) and os.path.isfile(stamp) and head > os.path.getmtime(stamp)
 
 
 def git_time(*args):
@@ -246,7 +272,10 @@ def main():
     handoff = os.path.join("docs", "agent", "HANDOFF.md")
     if stale_after_commit(stamp, handoff):
         problems.append("docs/agent/HANDOFF.md is older than a commit made in this session: update it (current state with the HEAD sha, next step, plan progress) before stopping.")
-    if "## REPORT" in last_assistant_text(payload.get("transcript_path") or ""):
+    report = "## REPORT" in last_assistant_text(payload.get("transcript_path") or "")
+    if report or committed_in_session(stamp):
+        problems.extend(oversize())
+    if report:
         if os.path.isfile(stamp) and os.path.isfile(handoff) and os.path.getmtime(handoff) < os.path.getmtime(stamp):
             problems.append("docs/agent/HANDOFF.md is older than this session's start: update it (what was done, durable decisions mirrored into DECISIONS.md, current state, next step, known traps, plan progress) before handing off.")
         if os.path.isfile(os.path.join(".claude", "active-plan")):

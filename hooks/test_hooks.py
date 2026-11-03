@@ -738,6 +738,37 @@ def stop_gate_cases(s):
         os.utime(handoff, (ct2 - 50, ct2 - 50))
         proc = run({"transcript_path": transcript("mid-task question?")})
         s.check("stop-gate treats a tracked HANDOFF.md committed in HEAD as fresh (grandfather repos)", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:80])
+        # Ledger ceilings: the bootstrap rereads HANDOFF every session, so a session that committed (or hands off)
+        # may not leave HANDOFF over 120 lines / 12000 bytes, or LESSONS over 40 lines.
+        lessons = os.path.join(repo, "docs/agent/LESSONS.md")
+
+        def write_lines(path, n, width=10):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("".join("l" * width + "\n" for _ in range(n)))
+
+        write_lines(handoff, 121)
+        proc = run({"transcript_path": transcript("mid-task question?")})
+        s.check("stop-gate blocks after an in-session commit when HANDOFF.md exceeds 120 lines, naming the ceiling", proc.returncode == 2 and "120" in proc.stderr and "HANDOFF" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+        write_lines(handoff, 80)
+        proc = run({"transcript_path": transcript("mid-task question?")})
+        s.check("stop-gate passes with HANDOFF.md at 80 lines", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:80])
+        write_lines(handoff, 100, width=130)
+        proc = run({"transcript_path": transcript("mid-task question?")})
+        s.check("stop-gate blocks when HANDOFF.md exceeds 12000 bytes even under 120 lines", proc.returncode == 2 and "12000" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+        write_lines(handoff, 80)
+        write_lines(lessons, 41)
+        proc = run({"transcript_path": transcript("mid-task question?")})
+        s.check("stop-gate blocks when LESSONS.md exceeds 40 lines", proc.returncode == 2 and "LESSONS" in proc.stderr and "40" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
+        write_lines(lessons, 40)
+        proc = run({"transcript_path": transcript("mid-task question?")})
+        s.check("stop-gate passes with LESSONS.md at 40 lines", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:80])
+        write_lines(handoff, 121)
+        os.utime(stamp, (ct2 + 10, ct2 + 10))
+        proc = run({"transcript_path": transcript("mid-task question?")})
+        s.check("stop-gate ignores an oversized HANDOFF.md on a mid-task stop when the session made no commit", proc.returncode == 0, str(proc.returncode) + " " + proc.stderr[:80])
+        os.utime(handoff, (ct2 + 20, ct2 + 20))
+        proc = run({"transcript_path": transcript("## REPORT")})
+        s.check("stop-gate blocks a handoff with an oversized HANDOFF.md even without a commit", proc.returncode == 2 and "120" in proc.stderr and "older" not in proc.stderr, str(proc.returncode) + " " + proc.stderr[:120])
 
 
 def subagent_long_section_cases(s):
@@ -846,7 +877,7 @@ SKELETON_HEADS = [
     "### File `.claude/settings.json` (if it already exists, MERGE, never overwrite existing keys)",
 ]
 # Stamp = the kt version in which these blocks last changed; when a block changes, update both together.
-SKELETON_PIN = ("1.3.0", "ec772b12616d4e571ab018593812c47461a74e7578b00f850f30f2203f5b7767")
+SKELETON_PIN = ("1.5.0", "b8b0ced7815695c2a88833bb80064104d8dd44d8a8e15282dc725ba945d4e0d0")
 
 
 def skeleton_digest(md_text):
