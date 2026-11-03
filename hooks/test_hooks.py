@@ -603,6 +603,27 @@ def rules_cases(s):
             f.write("# P\n\n## Current stage and consequences\nSTAGE-NEW\n")
         ctx = stale_ctx()
         s.check("session-rules.sh docs hook injects the stage it found and warns only about the missing open decisions", "STAGE-NEW" in ctx and "docs/agent/DECISIONS.md has no" in ctx and "docs/agent/PROJECT.md has no" not in ctx, ctx[:200])
+        # Role-based injection: a reading subagent (reviewer, explorer, planner) gets sections 1, 4 and 5 only;
+        # a coder, an unknown type or no type at all gets the whole file.
+        def sub_ctx(agent_type):
+            payload = {"hook_event_name": "SubagentStart"}
+            if agent_type is not None:
+                payload["agent_type"] = agent_type
+            proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps(payload), env=clean)
+            try:
+                return json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+            except Exception:
+                return ""
+
+        full = sub_ctx(None)
+        reader = sub_ctx("reviewer")
+        s.check("session-rules.sh gives a reviewer subagent sections 1, 4 and 5 and keeps the SUBAGENT header", all(k in reader for k in ("## 1.", "## 4.", "## 5.", "SUBAGENT", "=== kt rules ===")) and "## 2. Scope" not in reader and "## 3." not in reader and "## 6." not in reader, reader[:160])
+        s.check("session-rules.sh reader injection is at most 60% of the full rules", 0 < len(reader) <= 0.6 * len(full), str(len(reader)) + " vs " + str(len(full)))
+        for role in ("kt-coder", "Explore", "kt:design-review"):
+            ctx = sub_ctx(role)
+            expect_full = role == "kt-coder"
+            s.check("session-rules.sh injection for agent_type " + role + (" is the full file" if expect_full else " is the reader cut"), ("## 2. Scope" in ctx) == expect_full and "## 4." in ctx, ctx[:120])
+        s.check("session-rules.sh with no agent_type injects the full file", "## 2. Scope" in full and "## 6." in full, full[:120])
         sh = shutil.which("sh")
         proc = subprocess.run([sh, script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=start, env={**clean, "PATH": bare_path()})
         s.check("session-rules.sh warns when python3 is missing and still prints the rules", "WARNING: python3 not found" in proc.stdout and "## 2. Scope" in proc.stdout, proc.stdout[:120])

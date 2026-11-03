@@ -31,6 +31,11 @@ try:
 except Exception:
     print("")' 2>/dev/null)"
 [ -n "$cwd" ] || cwd="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+agent_type="$(printf '%s' "$input" | python3 -c 'import sys, json
+try:
+    print(json.load(sys.stdin).get("agent_type", "") or "")
+except Exception:
+    print("")' 2>/dev/null)"
 if [ "$mode" = "docs" ]; then
     [ "$event" = "SubagentStart" ] || exit 0
     python3 - "$cwd" <<'PY'
@@ -87,9 +92,15 @@ PY
     exit 0
 fi
 if [ "$event" = "SubagentStart" ]; then
-    python3 - "$root/rules/work.md" "$banner" "$warn" <<'PY'
+    # A subagent that only reads gets the language, verification and secrets rules; scope, session and git rules are for writers.
+    python3 - "$root/rules/work.md" "$banner" "$warn" "$agent_type" <<'PY'
 import json, sys
+READERS = {"reviewer", "kt-reviewer", "kt-guard-reviewer", "kt:design-review", "design-review", "Explore", "Plan"}
+KEEP = ("## 1.", "## 4.", "## 5.")
 body = open(sys.argv[1], encoding="utf-8").read()
+if sys.argv[4] in READERS:
+    parts = body.split("\n## ")
+    body = parts[0] + "".join("\n## " + p for p in parts[1:] if ("## " + p).startswith(KEEP))
 warn = sys.argv[3].replace("\\n", "\n")
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "SubagentStart", "additionalContext": sys.argv[2] + "\n" + warn + body}}))
 PY

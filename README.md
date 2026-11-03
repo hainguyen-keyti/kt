@@ -200,7 +200,9 @@ preview. The bootstrap stays under that limit and, when it has to cut, names the
 ## Rules and hooks in detail
 
 - `rules/work.md` (at most 70 lines, pinned by a test) is injected by `hooks/session-rules.sh` at
-  SessionStart (startup, clear, compact, fork; not resume) and at SubagentStart. A second SubagentStart
+  SessionStart (startup, clear, compact, fork; not resume) and at SubagentStart. A subagent that only
+  reads (`agent_type` reviewer, kt-reviewer, kt-guard-reviewer, kt:design-review, Explore, Plan) gets
+  sections 1, 4 and 5 only; every other type, and a missing type, gets the whole file. A second SubagentStart
   hook (`session-rules.sh docs`) injects the repo's "Open decisions" and "Current stage and
   consequences" sections. Each hook output stays within its own budget below the 10,000-character
   limit; a docs block over budget is cut at a line boundary and ends with a pointer to the files to
