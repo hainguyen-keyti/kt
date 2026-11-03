@@ -60,16 +60,15 @@ to do.
    layer. After committing: write the new HEAD sha into the "Where we are" section of HANDOFF.md
    (the standard set's stop gate blocks every stop when the session has a commit newer than
    HANDOFF, so the ledger must be newer than the last commit). Then back up the ENTIRE
-   machine-local agent layer (making up for its lack of git history), UNLESS you are in a lane
-   worktree (`git rev-parse --git-dir` differs from `--git-common-dir`): a lane does NOT back up,
-   because `rsync --delete` from a lane would overwrite the main checkout's copy with the lane's
-   HANDOFF and dangling symlinks.
+   machine-local agent layer (making up for its lack of git history) with the helper below,
+   run from the repo root. It mirrors `docs/agent/`, `CLAUDE.md` and `.claude/` (minus
+   `worktrees/`) into `~/kt-backups/<repo-name>/`, removing what the source no longer has, and
+   it refuses on its own to run from a lane worktree (a lane's HANDOFF and dangling symlinks
+   would overwrite the main checkout's copy). Paste its output.
 
    ```
-   mkdir -p ~/kt-backups/<repo-name>
-   [ -d docs/agent ] && rsync -a --delete docs/agent/ ~/kt-backups/<repo-name>/docs-agent/
-   [ -f CLAUDE.md ] && rsync -a CLAUDE.md ~/kt-backups/<repo-name>/
-   [ -d .claude ] && rsync -a --delete --exclude worktrees/ .claude/ ~/kt-backups/<repo-name>/dot-claude/
+   KT=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['kt@kt'][0]['installPath'])")
+   python3 "$KT/hooks/kt-backup.py"
    ```
 8. Push: `git pull --rebase` then `git push` until up to date with origin (the machine-wide
    end-of-session rule; a branch without an upstream, such as a new lane, uses

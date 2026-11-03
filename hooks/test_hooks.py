@@ -1057,6 +1057,52 @@ REPORT_SECTIONS = ["STATE", "DONE", "EVIDENCE", "DECIDED", "BLOCKED", "WAITING_O
 REPORT_FILES = ["commands/report.md", "commands/save.md", "commands/adopt.md"]
 
 
+def backup_cases(s):
+    """kt-backup.py mirrors the machine-local agent layer into ~/kt-backups without rsync: idempotent,
+    deletes what the source no longer has, skips .claude/worktrees, and refuses to run from a lane worktree."""
+    helper = os.path.join(HERE, "kt-backup.py")
+    s.check("hooks/kt-backup.py exists", os.path.isfile(helper))
+    if not os.path.isfile(helper):
+        return
+    home = tempfile.mkdtemp(prefix="kt-backup-home-")
+    repo = os.path.join(tempfile.mkdtemp(prefix="kt-backup-repo-"), "proj")
+    os.makedirs(os.path.join(repo, "docs", "agent", "plans"))
+    os.makedirs(os.path.join(repo, ".claude", "hooks"))
+    os.makedirs(os.path.join(repo, ".claude", "worktrees", "lane-1"))
+    for rel, body in (("docs/agent/HANDOFF.md", "h1"), ("docs/agent/plans/p.md", "p"), ("CLAUDE.md", "c"), (".claude/hooks/x.sh", "x"), (".claude/worktrees/lane-1/big", "w")):
+        with open(os.path.join(repo, rel), "w", encoding="utf-8") as f:
+            f.write(body)
+    git(repo, "init", "-q")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "root")
+
+    def run():
+        return subprocess.run([sys.executable, helper], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace", env={**os.environ, "HOME": home, "USERPROFILE": home})
+
+    def tree(root):
+        out = []
+        for d, _, files in os.walk(root):
+            for name in files:
+                out.append(os.path.relpath(os.path.join(d, name), root).replace("\\", "/"))
+        return sorted(out)
+
+    dest = os.path.join(home, "kt-backups", "proj")
+    proc = run()
+    s.check("kt-backup.py exits 0 and names the destination", proc.returncode == 0 and "kt-backups" in proc.stdout, (proc.stdout + proc.stderr)[:160])
+    first = tree(dest)
+    s.check("kt-backup.py copies docs/agent, CLAUDE.md and .claude, not worktrees", first == ["CLAUDE.md", "docs-agent/HANDOFF.md", "docs-agent/plans/p.md", "dot-claude/hooks/x.sh"], str(first))
+    proc = run()
+    s.check("kt-backup.py is idempotent (second run, same tree, exit 0)", proc.returncode == 0 and tree(dest) == first, str(tree(dest)))
+    os.remove(os.path.join(repo, "docs", "agent", "plans", "p.md"))
+    with open(os.path.join(repo, "docs", "agent", "HANDOFF.md"), "w", encoding="utf-8") as f:
+        f.write("h2")
+    run()
+    s.check("kt-backup.py removes files the source no longer has and refreshes changed ones", tree(dest) == ["CLAUDE.md", "docs-agent/HANDOFF.md", "dot-claude/hooks/x.sh"] and open(os.path.join(dest, "docs-agent", "HANDOFF.md"), encoding="utf-8").read() == "h2", str(tree(dest)))
+    lane = os.path.join(repo, ".claude", "worktrees", "lane-2")
+    git(repo, "worktree", "add", "-q", lane, "-b", "lane-2")
+    proc = subprocess.run([sys.executable, helper], cwd=lane, capture_output=True, text=True, encoding="utf-8", errors="replace", env={**os.environ, "HOME": home, "USERPROFILE": home})
+    s.check("kt-backup.py refuses to run from a lane worktree and says so", proc.returncode == 0 and "lane" in proc.stdout.lower() and tree(dest) == ["CLAUDE.md", "docs-agent/HANDOFF.md", "dot-claude/hooks/x.sh"], (proc.stdout + proc.stderr)[:160])
+
+
 def report_drift_cases(s):
     for rel in REPORT_FILES:
         text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
@@ -1086,7 +1132,7 @@ def trailer_cases(s):
 
 def main():
     s = Suite()
-    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases):
+    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases):
         fn(s)
     for line in s.failures:
         print("FAIL " + line)
