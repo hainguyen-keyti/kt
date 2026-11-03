@@ -3,7 +3,8 @@ description: "Prove a gate is alive: break it red on purpose, paste the red outp
 ---
 
 Prove that this gate really bites: $ARGUMENTS (if empty: ask the user which gate; suggest gates
-added or changed recently: a new test, a new lint rule, a new hook, a new CI check).
+added or changed recently: a new test, a new lint rule, a new hook, a new CI check, and after a kt
+upgrade its own shell guards, `no-destructive.py` and `no-gate-weakening.py`, in a throwaway repo).
 
 Premise of this command: a gate that bites nothing looks EXACTLY like a gate that works well;
 both are green. A gate never seen red counts as a gate that does not exist.

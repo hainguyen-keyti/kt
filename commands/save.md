@@ -44,11 +44,17 @@ to do.
      ```
      KT=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['kt@kt'][0]['installPath'])")
      python3 "$KT/hooks/no-offplan-edit.py" --audit
+     python3 "$KT/hooks/no-gate-weakening.py" --audit "$(python3 -c "import json;print(json.load(open('.claude/active-plan'))['base'])")"
      ```
 
      Declare every deviating file under UNSURE in the REPORT with a reason; never quietly
      legitimize it. Gitignored areas are outside both the fence and the audit: do not report as
      if they were covered.
+   - Acceptance ledger: list every line of the plan's section 4 as PASS, with the evidence line
+     from the acceptance script, or NOT PASSED. A NOT PASSED line becomes an entry under
+     "3. Deferred with a due date" in DECISIONS.md with its due date before the plan can close;
+     a plan is never closed with an unmet acceptance left unsaid. A gate-weakening hunk the audit
+     above lists is shown to the user with its `Gate-edit:` reason, or reverted.
    - Once the plan passes acceptance (acceptance green, user confirmed): remove the fence with
      `rm .claude/active-plan`, THEN paste the measurements into the plan's `## Evidence` section
      (the fence locks the plan during execution, so it must come down before the plan can be

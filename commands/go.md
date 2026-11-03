@@ -28,8 +28,11 @@ never copied into the plan):
    yourself.
 4. Done: run the repo's QUICK GATE (the `Quick gate:` line in the repo's CLAUDE.md, only the part
    relevant to the changed files) and the task's acceptance, and paste the real output (if there
-   is no check command, say so plainly); do not run the full gate after each task. Run the audit
-   inside the repo (command below; the audit climbs up to find the marker) and paste the result:
+   is no check command, say so plainly); do not run the full gate after each task. Acceptance
+   EVIDENCE comes from the plan's committed acceptance script (its PASS/FAIL table and exit code,
+   plan section 4); output assembled by hand does not count as acceptance. Run the two audits
+   inside the repo (commands below; the fence audit climbs up to find the marker, the gate audit
+   reads the plan's base from it) and paste the result:
    files written through the shell outside the radius surface HERE (the shell has no fence at
    write time), so fix them or record a parked question BEFORE committing; then commit the task
    (a one-sentence English message; a task that only touches machine-local files such as
@@ -42,6 +45,7 @@ never copied into the plan):
    ```
    KT=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['kt@kt'][0]['installPath'])")
    python3 "$KT/hooks/no-offplan-edit.py" --audit
+   python3 "$KT/hooks/no-gate-weakening.py" --audit "$(python3 -c "import json;print(json.load(open('.claude/active-plan'))['base'])")"
    ```
 5. Report briefly: the task just finished, evidence, audit, any new parked questions recorded,
    the next task. Then CONTINUE with the next task in the same run. Stop only on: a blocking

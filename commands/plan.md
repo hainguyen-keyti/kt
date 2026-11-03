@@ -70,6 +70,13 @@ Ask in batches, each with a proposal, until you can fill every one:
   path of the acceptance SCRIPT (section 4): forget them and the fence blocks the test written
   first in the very first task.
 - Each acceptance runs with one command; the plan has the "Risk tier" subsection (section 3).
+- Ambiguity scan of the six sections, the way a reviewer would read them: every adjective that
+  claims a quality (fast, stable, simple, secure) carries a number or a command that measures it;
+  no placeholder or TODO is left; Non-goals is not empty; section 4 names the SEAMS the tests will
+  cross (the public boundary each test goes through: an API, a CLI, a UI state, a file format) so
+  tests land on the interface, not on internals; anything the plan asserts about a library, a
+  signature or an output shape that was not tried out is written as "needs a probe in the first
+  task", never as fact.
 - Technical specifics the plan commits to (signatures, library behavior, acceptance commands and
   measurements) must already have been tried out, or be citable as `file:line` from the source or
   an installed `.d.ts`; every package the code, tests, and acceptance use must already be declared
