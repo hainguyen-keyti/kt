@@ -83,6 +83,9 @@ to do.
    the section names stay in sync). A reminder of the three most-forgotten rules: an empty
    section says `none`, DONE must carry a sha, EVIDENCE is real output. If this session was
    assigned work by another agent, send the block back to that agent with SendMessage. Then
-   recommend `/clear` before the next task, or once the context passes about 200-250k tokens: a
-   fresh session reloads from the ledger cheaply, a resumed one pays for the whole old context on
-   every turn.
+   name the next move for the user, taking the first option that holds, in this order: continue
+   here (the next phase needs this one's reasoning verbatim, and the window has room); `/clear`
+   (nothing here matters to what comes next; the ledger reloads it cheaply, a resumed session pays
+   for the whole old context on every turn); a handoff file (a new machine, directory or person);
+   a subagent (a tightly scoped task that needs no steering); `/compact` only when the context is
+   still needed and none of the above fits, and then with an instruction naming what to keep.
