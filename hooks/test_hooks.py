@@ -1263,6 +1263,69 @@ def gate_weakening_cases(s):
     s.check("no-gate-weakening lets a broken payload through like the other hooks", proc.returncode == 0, str(proc.returncode))
 
 
+def destructive_cases(s):
+    """no-destructive.py: the hard set (force-push, a hard reset, a forced clean, skipping commit hooks, disk
+    operations) is refused with exit 2; the recursive deletes aimed at an absolute, home or parent path, and
+    table drops, get a JSON `ask`; everything else, including deletes inside the repo and $TMPDIR, passes."""
+    hook = os.path.join(HERE, "no-destructive.py")
+    s.check("hooks/no-destructive.py exists", os.path.isfile(hook))
+    if not os.path.isfile(hook):
+        return
+
+    def bash(command, tool="Bash"):
+        return run_hook("no-destructive.py", {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": {"command": command}})
+
+    def decision(proc):
+        try:
+            return json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"]
+        except Exception:
+            return ""
+
+    hard = [
+        ("git push --force origin main", "force"),
+        ("git push -f origin main", "force"),
+        ("git push origin +main", "force"),
+        ("git reset --hard HEAD~1", "hard reset"),
+        ("git clean -fd", "clean"),
+        ("git commit --no-verify -m x", "verify"),
+        ("format d:", "format"),
+        ("Format-Volume -DriveLetter D", "disk"),
+    ]
+    for cmd, word in hard:
+        proc = bash(cmd, "PowerShell" if cmd[0].isupper() else "Bash")
+        s.check("no-destructive refuses: " + cmd, proc.returncode == 2 and word.lower() in proc.stderr.lower(), str(proc.returncode) + " " + proc.stderr[:100])
+    asks = [
+        ("rm -rf /var/data", "Bash"),
+        ("rm -r ~/projects/x", "Bash"),
+        ("rm -rf ../sibling", "Bash"),
+        ("rm -rf C:/Users/x/tmp", "Bash"),
+        ("Remove-Item -Recurse -Force C:\\Users\\x\\tmp", "PowerShell"),
+        ("rd /s /q build", "Bash"),
+        ("psql -c 'DROP TABLE users'", "Bash"),
+        ("kubectl delete deployment api", "Bash"),
+    ]
+    for cmd, tool in asks:
+        proc = bash(cmd, tool)
+        s.check("no-destructive asks: " + cmd, proc.returncode == 0 and decision(proc) == "ask", str(proc.returncode) + " " + (proc.stdout + proc.stderr)[:100])
+    passes = [
+        "ls -la",
+        "git push origin master",
+        "rm -rf .claude/worktrees/lane-1",
+        'rm -rf "$TMPDIR/kt-probe"',
+        "rm -rf node_modules/.cache",
+        "git worktree remove --force .claude/worktrees/lane-1",
+        'git commit -m "note: the old force-push and hard reset advice is gone"',
+        "grep -rn 'reset --hard' docs/",
+    ]
+    for cmd in passes:
+        proc = bash(cmd)
+        s.check("no-destructive passes: " + cmd, proc.returncode == 0 and decision(proc) == "", str(proc.returncode) + " " + (proc.stdout + proc.stderr)[:100])
+    proc = run_hook("no-destructive.py", "not json")
+    s.check("no-destructive lets a broken payload through like the other hooks", proc.returncode == 0, str(proc.returncode))
+    proc = run_hook("no-destructive.py", {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "x"}})
+    s.check("no-destructive ignores tools other than Bash and PowerShell", proc.returncode == 0 and decision(proc) == "", str(proc.returncode))
+
+
 def report_drift_cases(s):
     for rel in REPORT_FILES:
         text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
@@ -1292,7 +1355,7 @@ def trailer_cases(s):
 
 def main():
     s = Suite()
-    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases):
+    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases, destructive_cases):
         fn(s)
     for line in s.failures:
         print("FAIL " + line)
