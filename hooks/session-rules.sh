@@ -16,9 +16,10 @@ mode="${1:-}"
 banner="=== kt rules === (injected by the kt plugin at SessionStart and SubagentStart; precedence: repo CLAUDE.md > ~/CLAUDE.md > these rules)"
 warn=""
 # Run it, do not just find it: the Windows Store alias is a python3 on PATH that only prints an install prompt.
-python3 -c 'import sys' >/dev/null 2>&1 || warn="${warn}WARNING: python3 not found, the kt PreToolUse hooks (plan fence, secret read, em dash) are inert in this session.\n"
+python3 -c 'import sys' >/dev/null 2>&1 || warn="${warn}WARNING: python3 not found, the kt PreToolUse hooks (plan fence, secret read, em dash, destructive and gate guards) are inert in this session.\n"
 [ "$KT_ALLOW_OFFPLAN" = "1" ] && warn="${warn}WARNING: KT_ALLOW_OFFPLAN=1 is set in the claude process environment, the plan fence is OFF for this whole session.\n"
 [ "$KT_ALLOW_EMDASH" = "1" ] && warn="${warn}WARNING: KT_ALLOW_EMDASH=1 is set in the claude process environment, the em dash hook is OFF for this whole session.\n"
+[ "$KT_ALLOW_DESTRUCTIVE" = "1" ] && warn="${warn}WARNING: KT_ALLOW_DESTRUCTIVE=1 is set in the claude process environment, the destructive-command guard is OFF for this whole session.\n"
 input="$(cat)"
 event="$(printf '%s' "$input" | python3 -c 'import sys, json
 try:

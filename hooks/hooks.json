@@ -1,5 +1,5 @@
 {
-  "description": "kt house hooks: working rules injected at SessionStart and SubagentStart, plus a second SubagentStart hook for the open decisions and stage of the cwd repo (each hook output stays under the 10000-char limit Claude Code puts on one hook); no em dash on Write/Edit/NotebookEdit and on Bash commit commands; no secret reads on Read/Grep; plan fence on Write/Edit/NotebookEdit plus a coarse shell fence on Bash while a plan is active. Auto-registered when the plugin is enabled; a machine that also wires them in settings.json runs each twice.",
+  "description": "kt house hooks: working rules injected at SessionStart and SubagentStart, plus a second SubagentStart hook for the open decisions and stage of the cwd repo (each hook output stays under the 10000-char limit Claude Code puts on one hook); no em dash on Write/Edit/NotebookEdit and on Bash commit commands; no secret reads on Read/Grep; plan fence on Write/Edit/NotebookEdit plus a coarse shell fence on Bash while a plan is active; bash-guards.py on Bash and PowerShell runs no-destructive (one-way commands stop at a human) and no-gate-weakening (a commit may not quietly skip or remove a test) in one process. Auto-registered when the plugin is enabled; a machine that also wires them in settings.json runs each twice.",
   "hooks": {
     "SessionStart": [
       {
@@ -36,7 +36,14 @@
         "matcher": "Bash",
         "hooks": [
           { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/no-offplan-bash.py"] },
-          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/no-emdash.py"] }
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/no-emdash.py"] },
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/bash-guards.py"] }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          { "type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/bash-guards.py"] }
         ]
       }
     ]

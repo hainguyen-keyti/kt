@@ -89,6 +89,14 @@ Read this before installing; these apply to every session on the machine.
   coarse net against accidents, not a security boundary.
 - **The plan fence** while a plan is active: writes outside the blast radius are blocked.
   `KT_ALLOW_OFFPLAN=1` switches it off for the session, and the banner says so.
+- **One-way shell commands stop at a human**: a forced push, `git reset --hard`, `git clean -f`, a
+  commit or push that skips the repo's own hooks, and disk operations are refused; a recursive
+  delete aimed at an absolute, home or parent path, a table drop or `kubectl delete` shows the
+  permission prompt. Deletes inside the repo and under `$TMPDIR` pass. `KT_ALLOW_DESTRUCTIVE=1`
+  switches it off for the session, and the banner says so.
+- **A commit may not quietly weaken a gate**: skipping, focusing or removing a test, regenerating a
+  snapshot without its test, or skipping the repo's commit hooks is refused unless the commit
+  message carries a `Gate-edit: <reason>` line, so the reason rides into history.
 - **Working rules**: replies in the language the user writes in, English in every file it writes,
   the smallest change that works, red test before green, ask instead of guessing, stop before
   one-way actions such as moving money or deleting data.
@@ -99,11 +107,12 @@ Read this before installing; these apply to every session on the machine.
 
 ## What kt does not guard
 
-kt has no hook for destructive shell commands, and `no-secret-read.py` covers only the Read and
-Grep tools, not a `cat` in the shell. The working rules tell the agent to stop before one-way
-actions, which is a promise, not a block. Use Claude Code's own permission rules for that layer: a
-`permissions.deny` list in `~/.claude/settings.json` is enforced by the client whatever the agent
-decides. A starting point:
+The shell guards match the text of the command, so a forbidden command spelled inside an `echo`,
+a heredoc or a grep pattern trips them too (rephrase, or let the user run it), while the same
+program reached another way (`/bin/rm`, `sh -c '...'`, a script) gets past them. `no-secret-read.py`
+covers only the Read and Grep tools, not a `cat` in the shell. For a layer that does not depend
+on the command text, use Claude Code's own permission rules: a `permissions.deny` list in
+`~/.claude/settings.json` is enforced by the client whatever the agent decides. A starting point:
 
 ```json
 {
@@ -219,6 +228,10 @@ preview. The bootstrap stays under that limit and, when it has to cut, names the
   folder. Other shell writes outside the radius are not blocked on the spot; they surface in the
   audit that runs before every commit.
 - `hooks/no-secret-read.py`: blocks Read and Grep on secret files; the name list is in its source.
+- `hooks/bash-guards.py`: one process on Bash and PowerShell that runs `no-destructive.py` (the
+  one-way command tiers above; a crash refuses the call) and then `no-gate-weakening.py` (the
+  commit scan above, plus `--audit <base>` for `/kt:go` and `/kt:save`; a crash lets the call
+  through). Promoted from a machine-local guard that paid for each rule.
 - When a hook itself fails: `no-offplan-edit.py` fails closed (a crash blocks the write, with or
   without an active plan), and `no-offplan-bash.py` fails closed only while a plan is active.
   `no-emdash.py` and `no-secret-read.py` fail open: an internal error lets the call through, and

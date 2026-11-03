@@ -476,7 +476,8 @@ def frontmatter_cases(s):
 EXPECTED_WIRING = {
     "Write|Edit|NotebookEdit": ["no-emdash.py", "no-offplan-edit.py"],
     "Read|Grep": ["no-secret-read.py"],
-    "Bash": ["no-offplan-bash.py", "no-emdash.py"],
+    "Bash": ["no-offplan-bash.py", "no-emdash.py", "bash-guards.py"],
+    "PowerShell": ["bash-guards.py"],
 }
 
 
@@ -547,12 +548,14 @@ def rules_cases(s):
         except Exception as exc:
             detail = str(exc) + " | " + detail
         s.check("session-rules.sh SubagentStart emits additionalContext JSON (stdout is swallowed for subagents)", proc.returncode == 0 and ok, detail)
-        clean = {k: v for k, v in os.environ.items() if k not in ("KT_ALLOW_EMDASH", "KT_ALLOW_OFFPLAN")}
+        clean = {k: v for k, v in os.environ.items() if k not in ("KT_ALLOW_EMDASH", "KT_ALLOW_OFFPLAN", "KT_ALLOW_DESTRUCTIVE")}
         start = json.dumps({"hook_event_name": "SessionStart", "source": "startup"})
         proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=start, env=clean)
         s.check("session-rules.sh prints no WARNING when nothing is switched off", proc.returncode == 0 and "WARNING" not in proc.stdout, proc.stdout[:120])
         proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=start, env={**clean, "KT_ALLOW_OFFPLAN": "1"})
         s.check("session-rules.sh warns when KT_ALLOW_OFFPLAN=1 is set", "WARNING: KT_ALLOW_OFFPLAN=1" in proc.stdout and "## 2. Scope" in proc.stdout, proc.stdout[:120])
+        proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=start, env={**clean, "KT_ALLOW_DESTRUCTIVE": "1"})
+        s.check("session-rules.sh warns when KT_ALLOW_DESTRUCTIVE=1 is set", "WARNING: KT_ALLOW_DESTRUCTIVE=1" in proc.stdout, proc.stdout[:120])
         proc = subprocess.run(["sh", script], capture_output=True, text=True, encoding="utf-8", errors="replace", input=json.dumps({"hook_event_name": "SubagentStart"}), env={**clean, "KT_ALLOW_EMDASH": "1"})
         try:
             ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
@@ -1326,6 +1329,39 @@ def destructive_cases(s):
     s.check("no-destructive ignores tools other than Bash and PowerShell", proc.returncode == 0 and decision(proc) == "", str(proc.returncode))
 
 
+def dispatcher_cases(s):
+    """bash-guards.py runs no-destructive then no-gate-weakening in one process and is wired on Bash and PowerShell."""
+    hooks = json.load(open(os.path.join(HERE, "hooks.json"), encoding="utf-8"))["hooks"]["PreToolUse"]
+    wired = {g["matcher"]: [h["args"][0].rsplit("/", 1)[-1] for h in g["hooks"]] for g in hooks}
+    s.check("hooks.json wires bash-guards.py on Bash", "bash-guards.py" in wired.get("Bash", []), str(wired.get("Bash")))
+    s.check("hooks.json wires bash-guards.py on PowerShell", wired.get("PowerShell") == ["bash-guards.py"], str(wired.get("PowerShell")))
+    s.check("hooks.json wires the two new guards only through the dispatcher", all("no-destructive.py" not in v and "no-gate-weakening.py" not in v for v in wired.values()), str(wired))
+
+    def run(payload):
+        return run_hook("bash-guards.py", payload)
+
+    proc = run({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git push --force origin main"}})
+    s.check("bash-guards refuses a forced push with the no-destructive message", proc.returncode == 2 and "no-destructive" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:100])
+    proc = run({"hook_event_name": "PreToolUse", "tool_name": "PowerShell", "tool_input": {"command": "Remove-Item -Recurse C:\\x"}})
+    s.check("bash-guards forwards an ask decision from PowerShell", proc.returncode == 0 and '"ask"' in proc.stdout, str(proc.returncode) + " " + proc.stdout[:100])
+    repo = tempfile.mkdtemp(prefix="kt-guards-")
+    os.makedirs(os.path.join(repo, "tests"))
+    with open(os.path.join(repo, "tests", "a.test.js"), "w", encoding="utf-8", newline="\n") as f:
+        f.write('test("a", () => {});\n')
+    git(repo, "init", "-q")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "base")
+    with open(os.path.join(repo, "tests", "a.test.js"), "w", encoding="utf-8", newline="\n") as f:
+        f.write('test.skip("a", () => {});\n')
+    git(repo, "add", "-A")
+    proc = run({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": repo, "tool_input": {"command": 'git commit -m "x"'}})
+    s.check("bash-guards reaches no-gate-weakening when no-destructive is silent", proc.returncode == 2 and "Gate-edit:" in proc.stderr, str(proc.returncode) + " " + proc.stderr[:100])
+    proc = run({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": repo, "tool_input": {"command": "ls"}})
+    s.check("bash-guards is silent on a plain command", proc.returncode == 0 and proc.stdout.strip() == "" and proc.stderr.strip() == "", str(proc.returncode) + " " + (proc.stdout + proc.stderr)[:80])
+    proc = run_hook("bash-guards.py", "not json")
+    s.check("bash-guards lets a broken payload through", proc.returncode == 0, str(proc.returncode))
+
+
 def report_drift_cases(s):
     for rel in REPORT_FILES:
         text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
@@ -1355,7 +1391,7 @@ def trailer_cases(s):
 
 def main():
     s = Suite()
-    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases, destructive_cases):
+    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases, destructive_cases, dispatcher_cases):
         fn(s)
     for line in s.failures:
         print("FAIL " + line)
