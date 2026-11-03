@@ -528,7 +528,7 @@ def rules_cases(s):
         return
     text = open(rules, encoding="utf-8").read()
     s.check("rules/work.md passes no-emdash", run_hook("no-emdash.py", content(text)).returncode == 0)
-    s.check("rules/work.md at most 100 lines", text.count("\n") <= 100, str(text.count("\n")))
+    s.check("rules/work.md at most 70 lines", text.count("\n") <= 70, str(text.count("\n")))
     s.check("rules/core.md does not exist (the rules live in rules/work.md only)", not os.path.exists(os.path.join(ROOT, "rules", "core.md")))
     script = os.path.join(HERE, "session-rules.sh")
     s.check("session-rules.sh exists", os.path.isfile(script))
