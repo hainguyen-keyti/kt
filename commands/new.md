@@ -134,11 +134,11 @@ from question 7:
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ -d docs/agent ] || exit 0
 mkdir -p .claude && touch .claude/session-start
-stamp="kt-skeleton 1.5.0 (the kt version whose skeleton these hooks match; /kt:load compares it with the stamp in the installed kt)"
+stamp="kt-skeleton 1.6.2 (the kt version whose skeleton these hooks match; /kt:load compares it with the stamp in the installed kt)"
 src=""
 [ -t 0 ] || src="$(cat | python3 -c 'import sys, json
 try:
-    print(json.load(sys.stdin).get("source", ""))
+    print(json.loads(sys.stdin.buffer.read().decode("utf-8", "replace")).get("source", ""))
 except Exception:
     print("")' 2>/dev/null)"
 if [ "$src" = "resume" ]; then
@@ -153,6 +153,8 @@ case "$src" in
 esac
 echo "Respect the stage consequences absolutely. Items under '4. Open decisions' in DECISIONS.md must not be re-decided or re-proposed. The rest of the ledger is in docs/agent/: /kt:load or a Read when a task needs it."
 python3 - <<'PY'
+import sys
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Claude Code reads hook output as UTF-8, whatever the locale
 CAP = 2900
 for path, needle in (("docs/agent/PROJECT.md", "current stage"), ("docs/agent/DECISIONS.md", "open decisions"), ("docs/agent/HANDOFF.md", "next steps")):
     try:
@@ -212,6 +214,10 @@ import os
 import subprocess
 import sys
 
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    # Claude Code hands hooks UTF-8 whatever the Windows locale says: read and answer in UTF-8.
+    _stream.reconfigure(encoding="utf-8", errors="replace")
+
 CEILINGS = (("docs/agent/HANDOFF.md", 120, 12000), ("docs/agent/LESSONS.md", 40, 0))
 
 
@@ -235,7 +241,7 @@ def committed_in_session(stamp):
 
 def git_time(*args):
     try:
-        proc = subprocess.run(["git", "log", "-1", "--format=%ct", *args], capture_output=True, text=True)
+        proc = subprocess.run(["git", "log", "-1", "--format=%ct", *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
         return int(proc.stdout.strip()) if proc.returncode == 0 and proc.stdout.strip() else 0
     except Exception:
         return 0
@@ -295,7 +301,7 @@ def main():
             try:
                 reg = json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json"), encoding="utf-8"))
                 kt = reg["plugins"]["kt@kt"][0]["installPath"]
-                audit = subprocess.run([sys.executable, os.path.join(kt, "hooks", "no-offplan-edit.py"), "--audit"], capture_output=True, text=True)
+                audit = subprocess.run([sys.executable, os.path.join(kt, "hooks", "no-offplan-edit.py"), "--audit"], capture_output=True, text=True, encoding="utf-8", errors="replace")
                 if audit.returncode != 0:
                     problems.append("plan fence audit failed, fix or report each file in UNSURE before handing off:\n" + audit.stdout.strip())
             except Exception as exc:

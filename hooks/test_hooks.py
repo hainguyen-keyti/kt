@@ -918,7 +918,7 @@ SKELETON_HEADS = [
     "### File `.claude/settings.json` (if it already exists, MERGE, never overwrite existing keys)",
 ]
 # Stamp = the kt version in which these blocks last changed; when a block changes, update both together.
-SKELETON_PIN = ("1.5.0", "b8b0ced7815695c2a88833bb80064104d8dd44d8a8e15282dc725ba945d4e0d0")
+SKELETON_PIN = ("1.6.2", "444fd092e923c0195a57f465e0a7329f5a179290a9ca35a7074442e8920bdc4d")
 
 
 def skeleton_digest(md_text):
@@ -983,6 +983,46 @@ def skeleton_stamp_cases(s):
         open(os.path.join(agent, "PROJECT.md"), "w", encoding="utf-8").write("# P\n\n## Current stage and consequences\nSTAGE-MARK\n" + ("word " * 60 + "\n") * 80)
         proc, touched = start('{"source":"startup"}')
         s.check("skeleton session-start.sh stays under the 10000-char hook limit and names the files to read when it cuts", proc.returncode == 0 and len(proc.stdout) < 10000 and "docs/agent/PROJECT.md" in proc.stdout and "kt-skeleton" in proc.stdout, str(len(proc.stdout)) + " " + proc.stdout[-200:])
+
+
+def skeleton_utf8_cases(s):
+    """The skeleton hooks run under the machine's locale (cp1252 on a Windows box): a Vietnamese ledger line
+    or a payload path must still go through, so they read the payload as UTF-8 bytes and write UTF-8."""
+    text = open(os.path.join(ROOT, "commands", "new.md"), encoding="utf-8").read()
+    viet = chr(0x111) + chr(0x1B0) + chr(0x1EDD) + "ng " + chr(0x1EA1)  # built with chr() so this file stays ASCII
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"}
+    with tempfile.TemporaryDirectory() as tmp:
+        script = os.path.join(tmp, "session-start.sh")
+        open(script, "w", encoding="utf-8").write(extract_block(text, SKELETON_HEADS[0]))
+        proj = os.path.join(tmp, "proj")
+        agent = os.path.join(proj, "docs", "agent")
+        os.makedirs(agent)
+        open(os.path.join(agent, "HANDOFF.md"), "w", encoding="utf-8").write("# H\n\n## Next steps\nNEXT-MARK " + viet + "\n")
+        proc = subprocess.run(["sh", script], input=b'{"source":"startup"}', capture_output=True, env={**env, "CLAUDE_PROJECT_DIR": proj})
+        out = proc.stdout.decode("utf-8", "replace")
+        s.check("skeleton session-start.sh prints a Vietnamese ledger line under a cp1252 locale", proc.returncode == 0 and ("NEXT-MARK " + viet) in out and b"Traceback" not in proc.stderr, out[-120:] + proc.stderr.decode("utf-8", "replace")[-160:])
+        payload = ('{"source":"compact","cwd":"/tmp/' + viet + '"}').encode("utf-8")
+        proc = subprocess.run(["sh", script], input=payload, capture_output=True, env={**env, "CLAUDE_PROJECT_DIR": proj})
+        out = proc.stdout.decode("utf-8", "replace")
+        s.check("skeleton session-start.sh reads the source from a payload holding a non-ASCII path", "compacted or forked" in out, out[:200])
+
+        gate = os.path.join(tmp, "stop-gate.py")
+        open(gate, "w", encoding="utf-8").write(extract_block(text, "### File `.claude/hooks/stop-gate.py`"))
+        repo = os.path.join(tmp, "repo")
+        os.makedirs(os.path.join(repo, "docs", "agent"))
+        os.makedirs(os.path.join(repo, ".claude"))
+        handoff = os.path.join(repo, "docs", "agent", "HANDOFF.md")
+        open(handoff, "w").write("old\n")
+        open(os.path.join(repo, ".claude", "session-start"), "w").write("")
+        os.utime(handoff, (1, 1))
+        tdir = os.path.join(tmp, viet)
+        os.makedirs(tdir)
+        transcript = os.path.join(tdir, "t.jsonl")
+        with open(transcript, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "## REPORT\n" + viet}]}}) + "\n")
+        payload = json.dumps({"transcript_path": transcript}, ensure_ascii=False).encode("utf-8")
+        proc = subprocess.run([sys.executable, gate], input=payload, capture_output=True, env={**env, "CLAUDE_PROJECT_DIR": repo})
+        s.check("skeleton stop-gate.py reads a transcript path with Vietnamese in it under a cp1252 locale and blocks the stale handoff", proc.returncode == 2 and b"HANDOFF" in proc.stderr, str(proc.returncode) + " " + proc.stderr.decode("utf-8", "replace")[-160:])
 
 
 def skeleton_compare_cases(s):
@@ -1459,7 +1499,7 @@ def trailer_cases(s):
 
 def main():
     s = Suite()
-    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases, destructive_cases, dispatcher_cases, exec_form_cases, local_rules_backup_case):
+    for fn in (emdash_cases, emdash_relocation_cases, trailer_cases, secret_cases, offplan_cases, bash_cases, audit_cases, wiring_cases, frontmatter_cases, packaging_cases, rules_cases, subagent_long_section_cases, hook_budget_cases, docs_block_review_cases, stop_gate_cases, skeleton_stamp_cases, skeleton_utf8_cases, skeleton_compare_cases, cost_cases, gate_wording_cases, repo_hygiene_cases, report_drift_cases, backup_cases, utf8_cases, gate_weakening_cases, destructive_cases, dispatcher_cases, exec_form_cases, local_rules_backup_case):
         fn(s)
     for line in s.failures:
         print("FAIL " + line)
